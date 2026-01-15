@@ -1,0 +1,1640 @@
+//@version=6
+indicator("Structure-Driven Liquidity & Confluence Engine (MSS v11.8) — NR + LTF Safe + RTH + MTF OTE + OG (no SMT, no OB)",
+     shorttitle="MSS v11.8 NR",
+     overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
+
+// Dummy plot (keeps compiler happy when everything is object-based)
+plot(na, display=display.none)
+
+//─────────────────────────────────────────────────────────────────────────────
+// INT HELPERS
+//─────────────────────────────────────────────────────────────────────────────
+f_imax(int a, int b) => a > b ? a : b
+f_imin(int a, int b) => a < b ? a : b
+
+//─────────────────────────────────────────────────────────────────────────────
+// 0) GENERAL / UX
+//─────────────────────────────────────────────────────────────────────────────
+g0 = "0) General"
+mode = input.string("Clean (Recommended)", "Mode", options=["Clean (Recommended)","Balanced","Deep (Heavier)"], group=g0)
+showPack = input.string("Everything", "Visual preset", options=["Everything","Fibs only","STDEV only","HTZ only"], group=g0,
+     tooltip="Visibility preset ONLY. Calculations still run for confluence/HTZ.")
+confirmOnClose = input.bool(true, "Strict non-repaint on live bar (use confirmed values)", group=g0)
+autoLite1m = input.bool(true, "Auto-lite on 1m & lower", group=g0)
+allowHeavy1m = input.bool(false, "1m & lower: allow Heavy modes", group=g0)
+debugMode = input.bool(false, "Debug mode (status label)", group=g0)
+
+//─────────────────────────────────────────────────────────────────────────────
+// 1) SWINGS
+//─────────────────────────────────────────────────────────────────────────────
+g1 = "1) Swings (Structure Anchors)"
+leftBars   = input.int(5, "Pivot Left", minval=2, group=g1)
+rightBars  = input.int(5, "Pivot Right", minval=2, group=g1)
+minPctMove = input.float(1.2, "Major swing: Min % move", step=0.1, group=g1)
+atrLen     = input.int(14, "ATR length", group=g1)
+atrMult    = input.float(1.0, "Major swing: ATR prominence mult", step=0.1, group=g1)
+keepSwings = input.int(800, "Stored swings cap", minval=200, maxval=2500, group=g1)
+
+smartMicroSwings = input.bool(true, "Micro-TF intelligence (1m & lower)", group=g1)
+microPctMult     = input.float(0.30, "Micro: % multiplier", step=0.05, minval=0.10, maxval=1.00, group=g1)
+microAtrMult     = input.float(0.45, "Micro: ATR multiplier", step=0.05, minval=0.10, maxval=1.00, group=g1)
+microPivotTighten = input.bool(true, "Micro: tighten pivot L/R slightly", group=g1)
+
+//─────────────────────────────────────────────────────────────────────────────
+// 2) FIBS / GP
+//─────────────────────────────────────────────────────────────────────────────
+g2 = "2) Fibs / Golden Pocket"
+enableFibs = input.bool(true, "Enable fib visuals", group=g2)
+fibLegMode = input.string("Latest only", "Legs to draw", options=["Latest only","Last N legs","Window (offset+count)"], group=g2)
+fibLegCount  = input.int(6, "Leg count (N)", minval=1, maxval=40, group=g2)
+fibLegOffset = input.int(0, "Leg offset (0=latest)", minval=0, maxval=400, group=g2)
+
+showFibLabels = input.bool(true, "Show fib labels", group=g2)
+fibLabelMode  = input.string("ratio+price", "Label format", options=["ratio+price","ratio only","price only","off"], group=g2)
+fibLabelScope = input.string("Most recent leg only", "Label scope", options=["Most recent leg only","All drawn legs"], group=g2)
+labelPlacement = input.string("Near current bars", "Label placement", options=["Near current bars","At extension end"], group=g2)
+labelXOffset = input.int(2, "Label x-offset (bars)", minval=0, maxval=50, group=g2)
+
+plot0618 = input.bool(true, "Plot 0.618 line (GP top)", group=g2)
+shadeGP = input.bool(true, "Shade Golden Pocket (0.5–0.618)", group=g2)
+gpOnlyMostRecent = input.bool(true, "GP only on most recent leg", group=g2)
+gpTransp = input.int(86, "GP transparency (higher=lighter)", minval=10, maxval=95, group=g2)
+showGPLabels = input.bool(true, "Label Golden Pocket (GP)", group=g2)
+
+useReverseForHTZ = input.bool(true, "HTZ: include reverse fib levels", group=g2)
+showReverseFibs  = input.bool(false, "Show reverse fib lines (visual)", group=g2)
+reverseStyle = input.string("dotted", "Reverse fib style", options=["dotted","dashed","solid"], group=g2)
+
+oneMinColorFibByHTZ = input.bool(true, "1m & lower: color fib labels by HTZ side", group=g2)
+fibHTZMatchTicks  = input.int(2, "Fib↔HTZ match tolerance (ticks)", minval=0, maxval=12, group=g2)
+
+//─────────────────────────────────────────────────────────────────────────────
+// 2b) OTE (MTF)
+//─────────────────────────────────────────────────────────────────────────────
+gOTE = "2b) OTE Zones (MTF, structure-confirmed)"
+enableOTE = input.bool(true, "Enable OTE zones", group=gOTE)
+oteRetrLo = input.float(0.618, "OTE retracement low", step=0.001, group=gOTE)
+oteRetrHi = input.float(0.786, "OTE retracement high", step=0.001, group=gOTE)
+oteExtendBars = input.int(600, "OTE extend right (bars)", minval=50, maxval=5000, group=gOTE)
+oteShowLabels = input.bool(true, "OTE label", group=gOTE)
+oteLabelSize = input.string("small", "OTE label size", options=["tiny","small","normal","large"], group=gOTE)
+
+otePivotLeft  = input.int(3, "OTE HTF pivot left", minval=2, group=gOTE)
+otePivotRight = input.int(3, "OTE HTF pivot right", minval=2, group=gOTE)
+oteUseMajorFilter = input.bool(true, "OTE: use major swing filter", group=gOTE)
+oteMinPct = input.float(0.35, "OTE filter: min % move", step=0.05, group=gOTE)
+oteAtrMult = input.float(0.35, "OTE filter: ATR mult", step=0.05, group=gOTE)
+
+oteTf5  = input.bool(true,  "Show 5m OTE",  inline="ote0", group=gOTE)
+oteTF0  = input.timeframe("5",  "", inline="ote0", group=gOTE)
+oteTf15 = input.bool(true,  "Show 15m OTE", inline="ote1", group=gOTE)
+oteTF1  = input.timeframe("15", "", inline="ote1", group=gOTE)
+oteTf30 = input.bool(true,  "Show 30m OTE", inline="ote2", group=gOTE)
+oteTF2  = input.timeframe("30", "", inline="ote2", group=gOTE)
+oteTf60 = input.bool(true,  "Show 1H OTE",  inline="ote3", group=gOTE)
+oteTF3  = input.timeframe("60", "", inline="ote3", group=gOTE)
+oteTfD  = input.bool(true,  "Show Daily OTE",inline="ote4", group=gOTE)
+oteTF4  = input.timeframe("D",  "", inline="ote4", group=gOTE)
+
+oteCol5  = input.color(color.new(color.green, 86),  "5m OTE color",  group=gOTE)
+oteCol15 = input.color(color.new(color.aqua, 84),   "15m OTE color", group=gOTE)
+oteCol30 = input.color(color.new(color.blue,  86),  "30m OTE color", group=gOTE)
+oteCol60 = input.color(color.new(color.purple,86),  "1H OTE color",  group=gOTE)
+oteColD  = input.color(color.new(color.orange,86),  "Daily OTE color",group=gOTE)
+oteBorderTr = input.int(55, "OTE border transparency", minval=0, maxval=95, group=gOTE)
+
+//─────────────────────────────────────────────────────────────────────────────
+// 3) STDEV
+//─────────────────────────────────────────────────────────────────────────────
+g3 = "3) STDEV Liquidity"
+enableSTDEV = input.bool(true, "Enable STDEV", group=g3)
+drawSTDEVLines = input.bool(true, "Draw SD lines", group=g3)
+labelSTDEVLines = input.bool(true, "Label SD lines", group=g3)
+stdevLabelsOnMicro = input.bool(true, "Show SD labels on 1m & lower", group=g3)
+sdLabelSize = input.string("large", "SD label size", options=["tiny","small","normal","large"], group=g3)
+
+stdevLen = input.int(50, "STDEV length", minval=5, group=g3)
+stdevAnchorFib = input.float(0.5, "Anchor fib (equilibrium)", step=0.001, group=g3)
+stdevMultStr = input.string("1,2", "Multipliers (comma)", group=g3)
+
+sdLegMode = input.string("Follow fib legs", "STDEV legs", options=["Follow fib legs","Latest only","Last N legs","Window (offset+count)"], group=g3)
+sdLegCount  = input.int(2, "SD leg count (N)", minval=1, maxval=40, group=g3)
+sdLegOffset = input.int(0, "SD leg offset", minval=0, maxval=400, group=g3)
+
+//─────────────────────────────────────────────────────────────────────────────
+// 4) HTZ
+//─────────────────────────────────────────────────────────────────────────────
+g4  = "4) HTZ Zones (Tick Clustering)"
+g4w = "4) HTZ Weights (Quality)"
+g4u = "4) ULTRA / INSANE Liquidity"
+
+enableHTZ = input.bool(true, "Enable HTZ", group=g4)
+htzLegMode = input.string("Last N legs", "HTZ scan legs", options=["Follow fib legs","Latest only","Last N legs","Window (offset+count)"], group=g4)
+htzLegCount  = input.int(80, "HTZ leg count (N)", minval=1, maxval=200, group=g4)
+htzLegOffset = input.int(0, "HTZ leg offset", minval=0, maxval=400, group=g4)
+
+htzToleranceTicks = input.int(2, "Near-stack tolerance (ticks)", minval=0, maxval=12, group=g4)
+minNearCount = input.int(3, "Min near-stacks (weighted)", minval=2, maxval=200, group=g4)
+
+exactStackTicks = input.int(0, "Exact-stack tolerance (ticks) for STACK", minval=0, maxval=3, group=g4)
+minExactCount   = input.int(4, "Min stacks for STACK (weighted)", minval=2, maxval=300, group=g4)
+
+htzTightnessWeight = input.float(10.0, "Confidence: tightness weight", step=0.5, minval=0.0, maxval=60.0, group=g4w)
+htzMinConfidence = input.int(20, "Min confidence % (filter)", minval=0, maxval=99, group=g4)
+htzMaxWidthTicks = input.int(0, "Max HTZ width (ticks, 0=off)", minval=0, maxval=200, group=g4)
+
+htzAutoExpand = input.bool(true, "Smart: expand scan if too few zones", group=g4)
+htzMinZonesTarget = input.int(10, "Smart target: minimum HTZ zones", minval=1, maxval=40, group=g4)
+htzSmartMicro = input.bool(true, "Smart: micro-TF finds more HTZ", group=g4)
+
+maxHTZ = input.int(35, "Max HTZ shown", minval=1, maxval=200, group=g4)
+extendHTZBars = input.int(900, "Extend HTZ right (bars)", minval=50, maxval=5000, group=g4)
+
+drawHTZBoxes = input.bool(true, "Draw HTZ boxes (range)", group=g4)
+drawHTZMidLine = input.bool(true, "Draw HTZ mid line", group=g4)
+showHTZLabels = input.bool(true, "Show HTZ labels", group=g4)
+htzLabelSize  = input.string("large", "HTZ label size", options=["tiny","small","normal","large","huge"], group=g4)
+htzLabelOffsetBars = input.int(6, "HTZ label x-offset bars", minval=0, maxval=50, group=g4)
+showHTZRange = input.bool(true, "Label shows zone range", group=g4)
+showHTZConfidence = input.bool(true, "Label shows confidence %", group=g4)
+
+maxBucketsCap = input.int(900, "HTZ bucket cap (safety)", minval=100, maxval=5000, group=g4)
+
+wFib   = input.int(1, "Weight: Fib levels", minval=1, maxval=5, group=g4w)
+wRev   = input.int(1, "Weight: Reverse fib levels", minval=0, maxval=5, group=g4w)
+wGP    = input.int(1, "Weight: Golden Pocket bounds", minval=0, maxval=5, group=g4w)
+wSD    = input.int(1, "Weight: STDEV levels", minval=0, maxval=5, group=g4w)
+wLiqBase = input.int(2, "Weight: Liquidity levels (base)", minval=0, maxval=10, group=g4w)
+includeSwingsInHTZ = input.bool(true, "Include confirmed swing prices", group=g4w)
+wSwing = input.int(1, "Weight: Structure swings", minval=0, maxval=5, group=g4w)
+
+includeRoundNums = input.bool(false, "HTZ: include round-number levels", group=g4w)
+roundNumStepTicks = input.int(40, "Round-number step (ticks)", minval=1, maxval=10000, group=g4w)
+wRound = input.int(1, "Weight: round-number levels", minval=0, maxval=5, group=g4w)
+
+includeOTEInHTZ = input.bool(true, "HTZ: include MTF OTE bounds", group=g4w)
+wOTE = input.int(1, "Weight: OTE levels", minval=0, maxval=5, group=g4w)
+
+includeOGInHTZ = input.bool(true, "HTZ: include Opening Gaps (NDOG/NWOG) bounds", group=g4w)
+wOG = input.int(1, "Weight: Opening Gap levels", minval=0, maxval=5, group=g4w)
+
+enableUltra = input.bool(true, "Detect ULTRA zones", group=g4u)
+ultraMinConf = input.int(85, "ULTRA: min confidence %", minval=0, maxval=99, group=g4u)
+ultraMaxWidthTicks = input.int(2, "ULTRA: max width (ticks)", minval=0, maxval=200, group=g4u)
+ultraMinWeightedStacks = input.int(10, "ULTRA: min weighted stacks", minval=2, maxval=500, group=g4u)
+showUltraOnly = input.bool(false, "Show only ULTRA/INSANE (hide regular)", group=g4u)
+ultraLineWidth = input.int(4, "ULTRA line width", minval=2, maxval=6, group=g4u)
+
+enableInsaneTier = input.bool(true, "Detect INSANE zones", group=g4u)
+insaneMinConf = input.int(93, "INSANE: min confidence %", minval=0, maxval=99, group=g4u)
+insaneMaxWidthTicks = input.int(1, "INSANE: max width (ticks)", minval=0, maxval=50, group=g4u)
+insaneMinWeightedStacks = input.int(18, "INSANE: min weighted stacks", minval=2, maxval=700, group=g4u)
+
+//─────────────────────────────────────────────────────────────────────────────
+// 6) LIQUIDITY LEVELS
+//─────────────────────────────────────────────────────────────────────────────
+gL = "6) Liquidity Levels (MTF-safe)"
+showLiqLevels = input.bool(true, "Show liquidity levels", group=gL)
+showLiqLabels = input.bool(true, "Show labels", group=gL)
+
+liqExtendBars = input.int(240, "Extend right (bars)", minval=20, maxval=500, group=gL)
+liqLineWidth  = input.int(2, "Line width", minval=1, maxval=4, group=gL)
+liqLineStyle  = input.string("solid", "Line style", options=["solid","dashed","dotted"], group=gL)
+liqLineTransp = input.int(10, "Line transparency", minval=0, maxval=90, group=gL)
+
+liqLabelSize  = input.string("large", "Label size", options=["tiny","small","normal","large"], group=gL)
+liqLabelBgTr  = input.int(75, "Label bg transparency", minval=0, maxval=95, group=gL)
+liqLabelTxtTr = input.int(0, "Label text transparency", minval=0, maxval=90, group=gL)
+liqLabelShowPrice = input.bool(true, "Label includes price", group=gL)
+liqLabelXOffsetBars = input.int(2, "Label x-offset (bars)", minval=0, maxval=20, group=gL)
+liqLabelSepTicks = input.int(8, "If labels too close (ticks) → new column", minval=0, maxval=50, group=gL)
+liqLabelColStepBars = input.int(2, "Label column step (bars)", minval=0, maxval=10, group=gL)
+
+gLk = "6) Liquidity Toggles + Colors"
+showDailyOpen = input.bool(true, "Daily Open", inline="d1", group=gLk)
+colDailyOpen  = input.color(color.new(color.fuchsia, 0), "", inline="d1", group=gLk)
+showPrevDayHL = input.bool(true, "Prev Day H/L", inline="d2", group=gLk)
+colPrevDayHL  = input.color(color.new(color.white, 0), "", inline="d2", group=gLk)
+showPrevDayClose = input.bool(true, "Prev Day Close", inline="d3", group=gLk)
+colPrevDayClose  = input.color(color.new(color.silver, 0), "", inline="d3", group=gLk)
+
+showWeeklyOpen = input.bool(true, "Weekly Open", inline="w1", group=gLk)
+colWeeklyOpen  = input.color(color.new(color.teal, 0), "", inline="w1", group=gLk)
+showPrevWeekHL = input.bool(true, "Prev Week H/L", inline="w2", group=gLk)
+colPrevWeekHL  = input.color(color.new(color.white, 0), "", inline="w2", group=gLk)
+showPrevWeekClose = input.bool(false, "Prev Week Close", inline="w3", group=gLk)
+colPrevWeekClose  = input.color(color.new(color.silver, 0), "", inline="w3", group=gLk)
+
+showMonthlyOpen = input.bool(true, "Monthly Open", inline="m1", group=gLk)
+colMonthlyOpen  = input.color(color.new(color.blue, 0), "", inline="m1", group=gLk)
+showPrevMonthHL = input.bool(true, "Prev Month H/L", inline="m2", group=gLk)
+colPrevMonthHL  = input.color(color.new(color.white, 0), "", inline="m2", group=gLk)
+showPrevMonthClose = input.bool(false, "Prev Month Close", inline="m3", group=gLk)
+colPrevMonthClose  = input.color(color.new(color.silver, 0), "", inline="m3", group=gLk)
+
+showMidnightOpen = input.bool(false, "Midnight Open (00:00)", inline="x1", group=gLk)
+colMidnightOpen  = input.color(color.new(color.navy, 0), "", inline="x1", group=gLk)
+
+showCustomOpen = input.bool(false, "Custom Session Open", inline="x2", group=gLk)
+colCustomOpen  = input.color(color.new(color.orange, 0), "", inline="x2", group=gLk)
+customHour   = input.int(8, "Hour", minval=0, maxval=23, group=gLk)
+customMinute = input.int(30, "Min", minval=0, maxval=59, group=gLk)
+
+gRTH = "6b) RTH Session Levels (High/Low/EQ)"
+enableRTH = input.bool(true, "Enable RTH levels", group=gRTH)
+rthSession = input.session("0930-1600", "RTH session", group=gRTH)
+showRTHOpen = input.bool(false, "Show RTH Open", group=gRTH)
+showRTHHL   = input.bool(true, "Show RTH High/Low", group=gRTH)
+showRTHEQ   = input.bool(true, "Show RTH EQ (mid)", group=gRTH)
+rthExtendBars = input.int(600, "Extend right (bars)", minval=20, maxval=5000, group=gRTH)
+colRTH = input.color(color.new(color.yellow, 0), "RTH color", group=gRTH)
+rthLineWidth = input.int(2, "RTH line width", minval=1, maxval=4, group=gRTH)
+includeRTHInHTZ = input.bool(true, "HTZ: include RTH H/L/EQ", group=gRTH)
+
+gOG = "6c) Opening Gaps (NDOG / NWOG)"
+showNDOG = input.bool(false, "Show NDOG (New Day Opening Gap)", group=gOG)
+showNWOG = input.bool(false, "Show NWOG (New Week Opening Gap)", group=gOG)
+ogMinGapTicks = input.int(1, "Min gap size (ticks) to draw", minval=0, maxval=500, group=gOG)
+ogExtendBars  = input.int(900, "Extend right (bars)", minval=50, maxval=5000, group=gOG)
+ogKeepCount   = input.int(12, "Keep last N gaps", minval=1, maxval=80, group=gOG)
+ogShowLabels  = input.bool(true, "Show gap labels", group=gOG)
+ogLabelSize   = input.string("normal", "Gap label size", options=["tiny","small","normal","large"], group=gOG)
+ogLabelXOff   = input.int(2, "Label x-offset (bars)", minval=0, maxval=50, group=gOG)
+ndogFill = input.color(color.new(color.lime, 90), "NDOG fill", group=gOG)
+ndogBorder = input.color(color.new(color.lime, 40), "NDOG border", group=gOG)
+nwogFill = input.color(color.new(color.orange, 90), "NWOG fill", group=gOG)
+nwogBorder = input.color(color.new(color.orange, 40), "NWOG border", group=gOG)
+
+gLC = "6) Liquidity Clusters (INSANE/SUPER)"
+enableClusters = input.bool(true, "Detect liquidity clustering", group=gLC)
+clusterToleranceTicks = input.int(2, "Cluster tolerance (ticks)", minval=0, maxval=20, group=gLC)
+clusterInsaneMin = input.int(2, "INSANE: min levels", minval=2, maxval=12, group=gLC)
+clusterSuperMin = input.int(3, "SUPER: min levels", minval=2, maxval=12, group=gLC)
+clusterLineWidth = input.int(4, "Cluster line width", minval=2, maxval=6, group=gLC)
+clusterShowTags = input.bool(true, "Show cluster tag", group=gLC)
+colCluster = input.color(color.new(color.yellow, 0), "Cluster color", group=gLC)
+
+gLi = "6) Liquidity → HTZ"
+includeLiqInHTZ = input.bool(true, "HTZ: include liquidity levels", group=gLi)
+liqClusterBoost = input.bool(true, "Boost HTZ weight for clustered liquidity", group=gLi)
+
+//─────────────────────────────────────────────────────────────────────────────
+// 8) STYLE
+//─────────────────────────────────────────────────────────────────────────────
+gS = "8) Visual Style"
+fibBullColor = input.color(color.lime, "Fib bull color", group=gS)
+fibBearColor = input.color(color.red,  "Fib bear color", group=gS)
+stdevColor   = input.color(color.new(color.gray, 0), "STDEV color", group=gS)
+textColor    = input.color(color.white, "Text color", group=gS)
+labelDecimals = input.int(2, "Price decimals", minval=0, maxval=8, group=gS)
+snapToTick = input.bool(true, "Snap to mintick (recommended for futures)", group=gS)
+fibLineWidth = input.int(2, "Fib line width", minval=1, maxval=4, group=gS)
+
+//─────────────────────────────────────────────────────────────────────────────
+// 9) PERFORMANCE
+//─────────────────────────────────────────────────────────────────────────────
+gP = "9) Performance"
+rebuildMode = input.string("On new swing", "Rebuild", options=["On new swing","Throttle (safer)","Every bar (heavier)"], group=gP)
+throttleBars = input.int(10, "Throttle: rebuild every N bars", minval=1, maxval=500, group=gP)
+maxLinesCap  = input.int(320, "Max lines (hard cap)",  minval=50, maxval=470, group=gP)
+maxLabelsCap = input.int(320, "Max labels (hard cap)", minval=0,  maxval=470, group=gP)
+maxBoxesCap  = input.int(180, "Max boxes (hard cap)",  minval=0,  maxval=180, group=gP)
+
+//─────────────────────────────────────────────────────────────────────────────
+// INTERNALS / HELPERS
+//─────────────────────────────────────────────────────────────────────────────
+int MAX_FUTURE_BARS = 500
+f_clamp_x(int x) =>
+    int mx = bar_index + MAX_FUTURE_BARS
+    x > mx ? mx : x
+
+int secPerBar = timeframe.in_seconds(timeframe.period)
+bool isSub1m = timeframe.isseconds and (secPerBar > 0 and secPerBar < 60)
+bool is1m = timeframe.isintraday and (secPerBar == 60)
+bool isMicroTF = is1m or isSub1m
+bool isIntraday = timeframe.isintraday and secPerBar > 0
+
+bool liteTF = autoLite1m and isMicroTF and not allowHeavy1m
+bool mClean = mode == "Clean (Recommended)"
+bool mDeep  = mode == "Deep (Heavier)"
+
+bool visFibs = (showPack == "Everything") or (showPack == "Fibs only")
+bool visSD   = (showPack == "Everything") or (showPack == "STDEV only")
+bool visHTZ  = (showPack == "Everything") or (showPack == "HTZ only")
+
+bool calcHTZ = enableHTZ
+bool drawHTZ = enableHTZ and visHTZ
+
+int effMaxLines  = f_imin(maxLinesCap,  liteTF ? 220 : mClean ? 290 : mDeep ? 380 : 330)
+int effMaxLabels = f_imin(maxLabelsCap, liteTF ? 240 : mClean ? 320 : mDeep ? 420 : 360)
+int effMaxBoxes  = f_imin(maxBoxesCap,  liteTF ? 60  : mClean ? 120 : mDeep ? 170 : 140)
+
+f_round_price(float p) =>
+    if snapToTick
+        float t = syminfo.mintick
+        math.round(p / t) * t
+    else
+        float mult = math.pow(10.0, labelDecimals)
+        math.round(p * mult) / mult
+
+f_to_str(float p, int d) =>
+    float mult = math.pow(10.0, d)
+    str.tostring(math.round(p * mult) / mult)
+
+f_lbl_size(string opt) =>
+    if opt == "huge"
+        size.huge
+    else if opt == "large"
+        size.large
+    else if opt == "normal"
+        size.normal
+    else if opt == "small"
+        size.small
+    else
+        size.tiny
+
+f_line_style(string opt) =>
+    opt == "solid" ? line.style_solid : opt == "dashed" ? line.style_dashed : line.style_dotted
+
+f_fib_label(string ratiosTxt, float lvl, string modeSel) =>
+    string px = f_to_str(lvl, labelDecimals)
+    string out = ""
+    if modeSel == "off"
+        out := ""
+    else if modeSel == "ratio only"
+        out := ratiosTxt
+    else if modeSel == "price only"
+        out := px
+    else
+        out := ratiosTxt + " | " + px
+    out
+
+float atr = ta.atr(atrLen)
+float sd  = ta.stdev(close, stdevLen)
+float sdUse = (confirmOnClose and not barstate.isconfirmed) ? nz(sd[1], sd) : sd
+float closeUse = (confirmOnClose and not barstate.isconfirmed) ? nz(close[1], close) : close
+f_tick(float price) => int(math.round(f_round_price(price) / syminfo.mintick))
+
+var float[] FIB_SYS = array.from(-0.886, -0.618, -0.236, 0.236, 0.5, 0.618, 0.786, 0.886, 1.133, 1.272, 1.414)
+
+//─────────────────────────────────────────────────────────────────────────────
+// MTF OTE (request.security lookahead_off)
+//─────────────────────────────────────────────────────────────────────────────
+f_ok_flip(float newP, float lastP, float atrAt, bool useFilter, float minPct, float atrM) =>
+    if na(lastP)
+        true
+    else
+        float pct = lastP != 0.0 ? math.abs((newP - lastP) / lastP) * 100.0 : 100.0
+        float mv  = math.abs(newP - lastP)
+        (not useFilter) or (pct >= minPct and mv >= atrAt * atrM)
+
+f_htf_leg_core(int L, int R, bool useFilter, float minPct, float atrM) =>
+    var float pPrev = na
+    var float pLast = na
+    var int   dLast = 0
+    float ph = ta.pivothigh(high, L, R)
+    float pl = ta.pivotlow(low,  L, R)
+    float a  = ta.atr(atrLen)
+    float aAt = nz(a[R], a)
+
+    if not na(ph)
+        if dLast == 1
+            pLast := na(pLast) ? ph : math.max(pLast, ph)
+        else
+            bool ok = f_ok_flip(ph, pLast, aAt, useFilter, minPct, atrM)
+            if ok
+                pPrev := pLast
+                pLast := ph
+                dLast := 1
+
+    if not na(pl)
+        if dLast == -1
+            pLast := na(pLast) ? pl : math.min(pLast, pl)
+        else
+            bool ok = f_ok_flip(pl, pLast, aAt, useFilter, minPct, atrM)
+            if ok
+                pPrev := pLast
+                pLast := pl
+                dLast := -1
+
+    [pPrev, pLast, dLast]
+
+f_htf_leg(string tf, int L, int R, bool useFilter, float minPct, float atrM) =>
+    request.security(syminfo.tickerid, tf, f_htf_leg_core(L, R, useFilter, minPct, atrM), barmerge.gaps_off, barmerge.lookahead_off)
+
+f_ote_bounds(float p1, float p2, float rLo, float rHi) =>
+    float lo = na
+    float hi = na
+    float rng = p2 - p1
+    if not na(p1) and not na(p2) and rng != 0
+        float a = math.min(rLo, rHi)
+        float b = math.max(rLo, rHi)
+        if rng > 0
+            hi := f_round_price(p2 - rng * a)
+            lo := f_round_price(p2 - rng * b)
+        else
+            float rr = math.abs(rng)
+            lo := f_round_price(p2 + rr * a)
+            hi := f_round_price(p2 + rr * b)
+    [lo, hi]
+
+f_mid(float a, float b) => (a + b) * 0.5
+
+//─────────────────────────────────────────────────────────────────────────────
+// OBJECT POOLS
+//─────────────────────────────────────────────────────────────────────────────
+var line[]  fibLines  = array.new_line()
+var label[] fibLabels = array.new_label()
+var box[]   gpBoxes   = array.new_box()
+var label[] gpLabels  = array.new_label()
+var line[]  revFibLines = array.new_line()
+
+var line[]  sdLines   = array.new_line()
+var label[] sdLabels  = array.new_label()
+
+var line[]  htzLines  = array.new_line()
+var box[]   htzBoxes  = array.new_box()
+var label[] htzLabels = array.new_label()
+
+var line[]  liqLines = array.new_line()
+var label[] liqLbls  = array.new_label()
+var line[]  clLines  = array.new_line()
+var label[] clLabels = array.new_label()
+
+var box[]   oteBoxes = array.new_box()
+var label[] oteLabels = array.new_label()
+
+var box[]   ndogBoxes = array.new_box()
+var label[] ndogLabels = array.new_label()
+var box[]   nwogBoxes = array.new_box()
+var label[] nwogLabels = array.new_label()
+
+f_trim_lines(line[] a, int keep) =>
+    while array.size(a) > keep
+        line ln = array.pop(a)
+        line.delete(ln)
+
+f_trim_labels(label[] a, int keep) =>
+    while array.size(a) > keep
+        label lb = array.pop(a)
+        label.delete(lb)
+
+f_trim_boxes(box[] a, int keep) =>
+    while array.size(a) > keep
+        box bx = array.pop(a)
+        box.delete(bx)
+
+f_line_seg(line[] a, int idx, int x1, int x2, float y, color c, int w, ls) =>
+    int x1c = f_imax(0, f_clamp_x(x1))
+    int x2c = f_imax(0, f_clamp_x(x2))
+    if x2c <= x1c
+        x2c := f_imin(x1c + 1, bar_index + MAX_FUTURE_BARS)
+    line ln = na
+    if idx < array.size(a)
+        ln := array.get(a, idx)
+    else
+        ln := line.new(x1c, y, x2c, y, xloc=xloc.bar_index, extend=extend.none, color=color.new(color.gray, 0), width=1, style=line.style_solid)
+        array.push(a, ln)
+    line.set_xy1(ln, x1c, y)
+    line.set_xy2(ln, x2c, y)
+    line.set_color(ln, c)
+    line.set_width(ln, w)
+    line.set_style(ln, ls)
+    line.set_extend(ln, extend.none)
+    ln
+
+f_label_at(label[] a, int idx, int x, float y, string txt, color bg, color tc, string sizeOpt, st) =>
+    int xc = f_imax(0, f_clamp_x(x))
+    label lb = na
+    if idx < array.size(a)
+        lb := array.get(a, idx)
+    else
+        lb := label.new(xc, y, "", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.new(color.black, 80), textcolor=color.white, size=size.tiny)
+        array.push(a, lb)
+    label.set_x(lb, xc)
+    label.set_y(lb, y)
+    label.set_text(lb, txt)
+    label.set_color(lb, bg)
+    label.set_textcolor(lb, tc)
+    label.set_size(lb, f_lbl_size(sizeOpt))
+    label.set_style(lb, st)
+    lb
+
+f_box_at(box[] a, int idx, int x1, float top, int x2, float bot, color bg, color bc) =>
+    int x1c = f_imax(0, f_clamp_x(x1))
+    int x2c = f_imax(0, f_clamp_x(x2))
+    box bx = na
+    if idx < array.size(a)
+        bx := array.get(a, idx)
+        box.set_lefttop(bx, x1c, top)
+        box.set_rightbottom(bx, x2c, bot)
+        box.set_bgcolor(bx, bg)
+        box.set_border_color(bx, bc)
+    else
+        bx := box.new(x1c, top, x2c, bot, xloc=xloc.bar_index, bgcolor=bg, border_color=bc)
+        array.push(a, bx)
+    bx
+
+//─────────────────────────────────────────────────────────────────────────────
+// STDEV multipliers parse (guarded)
+//─────────────────────────────────────────────────────────────────────────────
+var float[] SDM = array.new_float()
+var string lastSDStr = ""
+if barstate.isfirst or stdevMultStr != lastSDStr
+    lastSDStr := stdevMultStr
+    array.clear(SDM)
+    string[] parts = str.split(stdevMultStr, ",")
+    int nParts = array.size(parts)
+    if nParts > 0
+        for i = 0 to nParts - 1
+            float v = str.tonumber(str.trim(array.get(parts, i)))
+            if not na(v)
+                array.push(SDM, v)
+
+//─────────────────────────────────────────────────────────────────────────────
+// LIQUIDITY (MTF-safe, deterministic)
+//─────────────────────────────────────────────────────────────────────────────
+float dOpen   = request.security(syminfo.tickerid, "D", open,     barmerge.gaps_off, barmerge.lookahead_off)
+float pdHigh  = request.security(syminfo.tickerid, "D", high[1],  barmerge.gaps_off, barmerge.lookahead_off)
+float pdLow   = request.security(syminfo.tickerid, "D", low[1],   barmerge.gaps_off, barmerge.lookahead_off)
+float pdClose = request.security(syminfo.tickerid, "D", close[1], barmerge.gaps_off, barmerge.lookahead_off)
+
+float wOpen   = request.security(syminfo.tickerid, "W", open,     barmerge.gaps_off, barmerge.lookahead_off)
+float pwHigh  = request.security(syminfo.tickerid, "W", high[1],  barmerge.gaps_off, barmerge.lookahead_off)
+float pwLow   = request.security(syminfo.tickerid, "W", low[1],   barmerge.gaps_off, barmerge.lookahead_off)
+float pwClose = request.security(syminfo.tickerid, "W", close[1], barmerge.gaps_off, barmerge.lookahead_off)
+
+float mOpen   = request.security(syminfo.tickerid, "M", open,     barmerge.gaps_off, barmerge.lookahead_off)
+float pmHigh  = request.security(syminfo.tickerid, "M", high[1],  barmerge.gaps_off, barmerge.lookahead_off)
+float pmLow   = request.security(syminfo.tickerid, "M", low[1],   barmerge.gaps_off, barmerge.lookahead_off)
+float pmClose = request.security(syminfo.tickerid, "M", close[1], barmerge.gaps_off, barmerge.lookahead_off)
+
+bool newD = ta.change(dOpen) != 0
+bool newW = ta.change(wOpen) != 0
+bool newM = ta.change(mOpen) != 0
+
+var int idxDaySession = na
+var int idxWeekSession = na
+var int idxMonthSession = na
+if newD
+    idxDaySession := bar_index
+if newW
+    idxWeekSession := bar_index
+if newM
+    idxMonthSession := bar_index
+idxDaySession := nz(idxDaySession, bar_index)
+idxWeekSession := nz(idxWeekSession, bar_index)
+idxMonthSession := nz(idxMonthSession, bar_index)
+
+// Midnight open / custom open
+var float midnightOpen = na
+bool newCalDay = ta.change(time("D")) != 0
+if newCalDay
+    midnightOpen := open
+midnightOpen := nz(midnightOpen, midnightOpen[1])
+
+var float customOpen = na
+var int idxCustomStart = na
+int tCustom = timestamp(syminfo.timezone, year, month, dayofmonth, customHour, customMinute)
+bool hitCustom = isIntraday and (time >= tCustom) and (nz(time[1], time) < tCustom)
+if hitCustom
+    customOpen := open
+    idxCustomStart := bar_index
+customOpen := nz(customOpen, customOpen[1])
+idxCustomStart := nz(idxCustomStart, idxDaySession)
+
+// RTH tracking (deterministic) — no bool nz/na
+bool inRTH = enableRTH and isIntraday and not na(time(timeframe.period, rthSession))
+var bool inRTH_prev = false
+bool rthStart = inRTH and not inRTH_prev
+inRTH_prev := inRTH
+
+var float rthOpen = na
+var float rthHigh = na
+var float rthLow  = na
+var int   rthStartX = na
+if rthStart
+    rthOpen := open
+    rthHigh := high
+    rthLow  := low
+    rthStartX := bar_index
+if inRTH
+    rthHigh := na(rthHigh) ? high : math.max(rthHigh, high)
+    rthLow  := na(rthLow)  ? low  : math.min(rthLow, low)
+float rthEq = (not na(rthHigh) and not na(rthLow)) ? (rthHigh + rthLow) * 0.5 : na
+rthStartX := nz(rthStartX, bar_index)
+
+//─────────────────────────────────────────────────────────────────────────────
+// NDOG / NWOG storage
+//─────────────────────────────────────────────────────────────────────────────
+var int[]   ndogX = array.new_int()
+var float[] ndogLo = array.new_float()
+var float[] ndogHi = array.new_float()
+
+var int[]   nwogX = array.new_int()
+var float[] nwogLo = array.new_float()
+var float[] nwogHi = array.new_float()
+
+f_push_gap(int[] xArr, float[] loArr, float[] hiArr, int x0, float lo, float hi, int cap) =>
+    array.unshift(xArr, x0)
+    array.unshift(loArr, lo)
+    array.unshift(hiArr, hi)
+    while array.size(xArr) > cap
+        array.pop(xArr)
+        array.pop(loArr)
+        array.pop(hiArr)
+
+float minGap = ogMinGapTicks * syminfo.mintick
+if newD and not na(dOpen) and not na(pdClose)
+    float loG = math.min(dOpen, pdClose)
+    float hiG = math.max(dOpen, pdClose)
+    if ogMinGapTicks == 0 or (hiG - loG) >= minGap
+        f_push_gap(ndogX, ndogLo, ndogHi, bar_index, f_round_price(loG), f_round_price(hiG), ogKeepCount)
+
+if newW and not na(wOpen) and not na(pwClose)
+    float loW = math.min(wOpen, pwClose)
+    float hiW = math.max(wOpen, pwClose)
+    if ogMinGapTicks == 0 or (hiW - loW) >= minGap
+        f_push_gap(nwogX, nwogLo, nwogHi, bar_index, f_round_price(loW), f_round_price(hiW), ogKeepCount)
+
+//─────────────────────────────────────────────────────────────────────────────
+// LIQ store + clustering (merged by tick)
+//─────────────────────────────────────────────────────────────────────────────
+var int[]    lKey   = array.new_int()
+var float[]  lPrice = array.new_float()
+var string[] lTags  = array.new_string()
+var color[]  lCol   = array.new_color()
+var int[]    lStart = array.new_int()
+
+var int[] cBId = array.new_int()
+var int[] cCnt = array.new_int()
+var int[] cMin = array.new_int()
+var int[] cMax = array.new_int()
+
+f_liq_clear() =>
+    array.clear(lKey)
+    array.clear(lPrice)
+    array.clear(lTags)
+    array.clear(lCol)
+    array.clear(lStart)
+
+f_cluster_clear() =>
+    array.clear(cBId)
+    array.clear(cCnt)
+    array.clear(cMin)
+    array.clear(cMax)
+
+f_liq_add(float price, string tag, color col, int startIdx) =>
+    int k = f_tick(price)
+    int idx = array.indexof(lKey, k)
+    if idx < 0
+        array.push(lKey, k)
+        array.push(lPrice, price)
+        array.push(lTags, tag)
+        array.push(lCol, col)
+        array.push(lStart, startIdx)
+    else
+        array.set(lTags, idx, array.get(lTags, idx) + "+" + tag)
+        array.set(lStart, idx, f_imin(array.get(lStart, idx), startIdx))
+
+f_liq_sort() =>
+    int n = array.size(lPrice)
+    if n > 1
+        for i = 1 to n - 1
+            float keyP = array.get(lPrice, i)
+            int keyK = array.get(lKey, i)
+            string keyT = array.get(lTags, i)
+            color keyC = array.get(lCol, i)
+            int keyS = array.get(lStart, i)
+            int j = i - 1
+            while j >= 0 and array.get(lPrice, j) > keyP
+                array.set(lPrice, j + 1, array.get(lPrice, j))
+                array.set(lKey,   j + 1, array.get(lKey, j))
+                array.set(lTags,  j + 1, array.get(lTags, j))
+                array.set(lCol,   j + 1, array.get(lCol, j))
+                array.set(lStart, j + 1, array.get(lStart, j))
+                j -= 1
+            array.set(lPrice, j + 1, keyP)
+            array.set(lKey,   j + 1, keyK)
+            array.set(lTags,  j + 1, keyT)
+            array.set(lCol,   j + 1, keyC)
+            array.set(lStart, j + 1, keyS)
+
+f_cluster_add(int k, int bucketTicks) =>
+    int bucket = int(math.floor(float(k) / float(bucketTicks)))
+    int idx = array.indexof(cBId, bucket)
+    if idx >= 0
+        array.set(cCnt, idx, array.get(cCnt, idx) + 1)
+        array.set(cMin, idx, f_imin(array.get(cMin, idx), k))
+        array.set(cMax, idx, f_imax(array.get(cMax, idx), k))
+    else
+        array.push(cBId, bucket)
+        array.push(cCnt, 1)
+        array.push(cMin, k)
+        array.push(cMax, k)
+
+f_cluster_count_for_tick(int k, int bucketTicks) =>
+    int bucket = int(math.floor(float(k) / float(bucketTicks)))
+    int idx = array.indexof(cBId, bucket)
+    idx >= 0 ? array.get(cCnt, idx) : 0
+
+f_liq_label_text(string tags, float price, int clusterN) =>
+    bool isSuper = enableClusters and clusterN >= clusterSuperMin
+    bool isInsane = enableClusters and clusterN >= clusterInsaneMin
+    string prefix = isSuper ? "SUPER " : isInsane ? "INSANE " : ""
+    string t = prefix + tags
+    if liqLabelShowPrice
+        t += "  " + f_to_str(price, labelDecimals)
+    t
+
+//─────────────────────────────────────────────────────────────────────────────
+// SWINGS (confirmed pivots, major gating, replacement)
+//─────────────────────────────────────────────────────────────────────────────
+f_add_swing_to(float[] pArr, int[] bArr, int[] dArr, float price, int b, int dir, float atrAtPivot, float minPctReq, float atrMultReq) =>
+    int action = 0
+    int n = array.size(pArr)
+    if n == 0
+        array.push(pArr, price)
+        array.push(bArr, b)
+        array.push(dArr, dir)
+        action := 2
+    else
+        int lastDir = array.get(dArr, n - 1)
+        if dir == lastDir
+            float lastPrice = array.get(pArr, n - 1)
+            bool better = (dir == 1 and price > lastPrice) or (dir == -1 and price < lastPrice)
+            if better
+                array.set(pArr, n - 1, price)
+                array.set(bArr, n - 1, b)
+                action := 1
+        else
+            float lastP = array.get(pArr, n - 1)
+            float pct = lastP != 0.0 ? math.abs((price - lastP) / lastP) * 100.0 : 100.0
+            float mv  = math.abs(price - lastP)
+            float atrGate = na(atrAtPivot) ? atr : atrAtPivot
+            if pct >= minPctReq and mv >= atrGate * atrMultReq
+                array.push(pArr, price)
+                array.push(bArr, b)
+                array.push(dArr, dir)
+                action := 2
+    action
+
+int effLeft = leftBars
+int effRight = rightBars
+if isMicroTF and smartMicroSwings and microPivotTighten
+    int reduce = liteTF ? 2 : 1
+    effLeft := f_imax(2, leftBars - reduce)
+    effRight := f_imax(2, rightBars - reduce)
+
+float tfScale = isMicroTF ? math.max(0.12, float(secPerBar) / 60.0) : 1.0
+float minPctEff  = (smartMicroSwings and isMicroTF) ? (minPctMove * microPctMult * tfScale) : minPctMove
+float atrMultEff = (smartMicroSwings and isMicroTF) ? (atrMult * microAtrMult * tfScale) : atrMult
+minPctEff  := math.max(0.05, minPctEff)
+atrMultEff := math.max(0.10, atrMultEff)
+
+float ph = ta.pivothigh(high, effLeft, effRight)
+float pl = ta.pivotlow(low,  effLeft, effRight)
+
+var float[] swP = array.new_float()
+var int[]   swB = array.new_int()
+var int[]   swD = array.new_int()
+
+if not na(ph)
+    int actH = f_add_swing_to(swP, swB, swD, ph, bar_index - effRight, 1, atr[effRight], minPctEff, atrMultEff)
+    actH := actH
+
+if not na(pl)
+    int actL = f_add_swing_to(swP, swB, swD, pl, bar_index - effRight, -1, atr[effRight], minPctEff, atrMultEff)
+    actL := actL
+
+while array.size(swP) > keepSwings
+    array.shift(swP)
+    array.shift(swB)
+    array.shift(swD)
+
+// leg helpers
+f_leg_count(int totalSwings, string modeSel, int nCount) =>
+    int legs = f_imax(0, totalSwings - 1)
+    if modeSel == "Latest only"
+        1
+    else if modeSel == "Last N legs" or modeSel == "Window (offset+count)"
+        f_imin(nCount, legs)
+    else
+        f_imin(nCount, legs)
+
+f_leg_index(int totalSwings, int offset, int i) =>
+    int legs = totalSwings - 1
+    (legs - 1) - offset - i
+
+f_get_leg_points(int leg) =>
+    float p1 = array.get(swP, leg)
+    float p2 = array.get(swP, leg + 1)
+    int b1 = array.get(swB, leg)
+    int b2 = array.get(swB, leg + 1)
+    [p1, p2, b1, b2]
+
+//─────────────────────────────────────────────────────────────────────────────
+// HTZ ENGINE (buckets + zones)
+//─────────────────────────────────────────────────────────────────────────────
+var int[] tBId  = array.new_int()
+var int[] tBCnt = array.new_int()
+var int[] tBMin = array.new_int()
+var int[] tBMax = array.new_int()
+
+var float[] gZMid    = array.new_float()
+var float[] gZLo     = array.new_float()
+var float[] gZHi     = array.new_float()
+var int[]   gZConf   = array.new_int()
+var bool[]  gZStack  = array.new_bool()
+var int[]   gZCnt    = array.new_int()
+var bool[]  gZUltra  = array.new_bool()
+var bool[]  gZInsane = array.new_bool()
+
+f_htz_clear_buckets() =>
+    array.clear(tBId)
+    array.clear(tBCnt)
+    array.clear(tBMin)
+    array.clear(tBMax)
+
+f_htz_bucket_add_tick(int k, int bucketTicks, int capBuckets, int addW) =>
+    if addW <= 0
+        false
+    else
+        int bucket = int(math.floor(float(k) / float(bucketTicks)))
+        int idx = array.indexof(tBId, bucket)
+        if idx >= 0
+            array.set(tBCnt, idx, array.get(tBCnt, idx) + addW)
+            array.set(tBMin, idx, f_imin(array.get(tBMin, idx), k))
+            array.set(tBMax, idx, f_imax(array.get(tBMax, idx), k))
+            true
+        else if array.size(tBId) < capBuckets
+            array.push(tBId, bucket)
+            array.push(tBCnt, addW)
+            array.push(tBMin, k)
+            array.push(tBMax, k)
+            true
+        else
+            false
+
+f_htz_add_price(float price, int w, int bucketTicks, int capBuckets) =>
+    f_htz_bucket_add_tick(f_tick(price), bucketTicks, capBuckets, w)
+
+f_htz_build_zones(int minNearEff, int exactTicksEff, int minExactEff, int effMaxHTZ, float tightWeight, int minConf, int maxWidthTicks) =>
+    array.clear(gZMid)
+    array.clear(gZLo)
+    array.clear(gZHi)
+    array.clear(gZConf)
+    array.clear(gZStack)
+    array.clear(gZCnt)
+    array.clear(gZUltra)
+    array.clear(gZInsane)
+
+    int nB = array.size(tBId)
+    if nB > 0
+        for bi = 0 to nB - 1
+            int cnt = array.get(tBCnt, bi)
+            if cnt >= minNearEff
+                int loK = array.get(tBMin, bi)
+                int hiK = array.get(tBMax, bi)
+                int widthT = f_imax(0, hiK - loK)
+                if maxWidthTicks <= 0 or widthT <= maxWidthTicks
+                    int tight = f_imax(1, widthT + 1)
+                    bool isStack = (widthT <= exactTicksEff) and (cnt >= minExactEff)
+                    float base = math.min(70.0, float(cnt) * 6.0)
+                    float tightBonus = math.min(29.0, tightWeight * (1.0 / float(tight)) * 10.0)
+                    int conf = int(math.round(math.min(99.0, base + tightBonus)))
+                    if conf >= minConf
+                        float lo = float(loK) * syminfo.mintick
+                        float hi = float(hiK) * syminfo.mintick
+                        float mid = (lo + hi) * 0.5
+                        array.push(gZLo, lo)
+                        array.push(gZHi, hi)
+                        array.push(gZMid, mid)
+                        array.push(gZCnt, cnt)
+                        array.push(gZConf, conf)
+                        array.push(gZStack, isStack)
+                        array.push(gZUltra, false)
+                        array.push(gZInsane, false)
+
+    int nZ = array.size(gZLo)
+    if nZ > 0
+        for i = 0 to nZ - 1
+            int cnt = array.get(gZCnt, i)
+            int conf = array.get(gZConf, i)
+            int widthTT = int(math.round((array.get(gZHi, i) - array.get(gZLo, i)) / syminfo.mintick))
+            bool ultra = enableUltra and (conf >= ultraMinConf) and (widthTT <= ultraMaxWidthTicks) and (cnt >= ultraMinWeightedStacks)
+            bool insane = enableInsaneTier and (conf >= insaneMinConf) and (widthTT <= insaneMaxWidthTicks) and (cnt >= insaneMinWeightedStacks)
+            array.set(gZUltra, i, ultra)
+            array.set(gZInsane, i, insane)
+
+    while array.size(gZLo) > effMaxHTZ
+        int sz = array.size(gZLo)
+        int worst = 0
+        int wC = array.get(gZConf, 0)
+        int wN = array.get(gZCnt, 0)
+        if sz > 1
+            for i = 1 to sz - 1
+                int c = array.get(gZConf, i)
+                int n = array.get(gZCnt, i)
+                bool isWorse = (c < wC) or (c == wC and n < wN)
+                if isWorse
+                    wC := c
+                    wN := n
+                    worst := i
+        array.remove(gZLo, worst)
+        array.remove(gZHi, worst)
+        array.remove(gZMid, worst)
+        array.remove(gZCnt, worst)
+        array.remove(gZConf, worst)
+        array.remove(gZStack, worst)
+        array.remove(gZUltra, worst)
+        array.remove(gZInsane, worst)
+
+f_is_in_any_htz(float lvl) =>
+    bool ok = false
+    int n = array.size(gZLo)
+    if n > 0
+        for k = 0 to n - 1
+            if lvl >= array.get(gZLo, k) and lvl <= array.get(gZHi, k)
+                ok := true
+                break
+    ok
+
+//─────────────────────────────────────────────────────────────────────────────
+// REBUILD GATING
+//─────────────────────────────────────────────────────────────────────────────
+var int lastSig = 0
+var int lastBuildBar = na
+var string lastReason = "init"
+
+f_signature() =>
+    int n = array.size(swP)
+    int lastB = n > 0 ? array.get(swB, n - 1) : 0
+    int lastD = n > 0 ? array.get(swD, n - 1) : 0
+    n * 100000 + lastB * 10 + lastD
+
+bool allowThisBar = barstate.islast
+
+//─────────────────────────────────────────────────────────────────────────────
+// MAIN BUILD (objects) — last bar only
+//─────────────────────────────────────────────────────────────────────────────
+if allowThisBar
+    int sig = f_signature()
+    bool swingChanged = sig != lastSig
+
+    bool okThrottle = true
+    if rebuildMode == "Throttle (safer)"
+        okThrottle := na(lastBuildBar) ? true : (bar_index - lastBuildBar >= throttleBars)
+
+    bool otherTrigger = newD or newW or newM or hitCustom or rthStart
+
+    bool need = false
+    if na(lastBuildBar)
+        need := true
+    else if rebuildMode == "Every bar (heavier)"
+        need := true
+    else if rebuildMode == "On new swing"
+        need := (swingChanged or otherTrigger)
+    else
+        need := (swingChanged or otherTrigger or okThrottle)
+
+    if need
+        lastSig := sig
+        lastBuildBar := bar_index
+
+        if rebuildMode == "Every bar (heavier)"
+            lastReason := "every bar"
+        else if swingChanged
+            lastReason := "new swing"
+        else if otherTrigger
+            lastReason := "session trigger"
+        else if okThrottle
+            lastReason := "throttle"
+        else
+            lastReason := "unknown"
+
+        int usedFibLines = 0
+        int usedFibLabels = 0
+        int usedGpBoxes = 0
+        int usedGpLabels = 0
+        int usedRevFibLines = 0
+
+        int usedSdLines = 0
+        int usedSdLabels = 0
+
+        int usedHtzLines = 0
+        int usedHtzBoxes = 0
+        int usedHtzLabels = 0
+
+        int usedLiqLines = 0
+        int usedLiqLbls = 0
+        int usedClLines = 0
+        int usedClLabels = 0
+
+        int usedOteBoxes = 0
+        int usedOteLabels = 0
+
+        int usedNdogBoxes = 0
+        int usedNdogLabels = 0
+        int usedNwogBoxes = 0
+        int usedNwogLabels = 0
+
+        // ───── Liquidity build
+        f_liq_clear()
+        f_cluster_clear()
+        int bucketTicksC = f_imax(1, clusterToleranceTicks * 2 + 1)
+
+        if showLiqLevels
+            if enableClusters
+                if showDailyOpen and not na(dOpen)
+                    f_cluster_add(f_tick(dOpen), bucketTicksC)
+                if showPrevDayHL and not na(pdHigh)
+                    f_cluster_add(f_tick(pdHigh), bucketTicksC)
+                if showPrevDayHL and not na(pdLow)
+                    f_cluster_add(f_tick(pdLow), bucketTicksC)
+                if showPrevDayClose and not na(pdClose)
+                    f_cluster_add(f_tick(pdClose), bucketTicksC)
+
+                if showWeeklyOpen and not na(wOpen)
+                    f_cluster_add(f_tick(wOpen), bucketTicksC)
+                if showPrevWeekHL and not na(pwHigh)
+                    f_cluster_add(f_tick(pwHigh), bucketTicksC)
+                if showPrevWeekHL and not na(pwLow)
+                    f_cluster_add(f_tick(pwLow), bucketTicksC)
+                if showPrevWeekClose and not na(pwClose)
+                    f_cluster_add(f_tick(pwClose), bucketTicksC)
+
+                if showMonthlyOpen and not na(mOpen)
+                    f_cluster_add(f_tick(mOpen), bucketTicksC)
+                if showPrevMonthHL and not na(pmHigh)
+                    f_cluster_add(f_tick(pmHigh), bucketTicksC)
+                if showPrevMonthHL and not na(pmLow)
+                    f_cluster_add(f_tick(pmLow), bucketTicksC)
+                if showPrevMonthClose and not na(pmClose)
+                    f_cluster_add(f_tick(pmClose), bucketTicksC)
+
+                if showMidnightOpen and isIntraday and not na(midnightOpen)
+                    f_cluster_add(f_tick(midnightOpen), bucketTicksC)
+                if showCustomOpen and isIntraday and not na(customOpen)
+                    f_cluster_add(f_tick(customOpen), bucketTicksC)
+
+                if enableRTH and inRTH and showRTHHL and not na(rthHigh) and not na(rthLow)
+                    f_cluster_add(f_tick(rthHigh), bucketTicksC)
+                    f_cluster_add(f_tick(rthLow), bucketTicksC)
+                    if showRTHEQ and not na(rthEq)
+                        f_cluster_add(f_tick(rthEq), bucketTicksC)
+
+            if showDailyOpen and not na(dOpen)
+                f_liq_add(f_round_price(dOpen), "DO", colDailyOpen, idxDaySession)
+            if showPrevDayHL and not na(pdHigh)
+                f_liq_add(f_round_price(pdHigh), "PDH", colPrevDayHL, idxDaySession)
+            if showPrevDayHL and not na(pdLow)
+                f_liq_add(f_round_price(pdLow), "PDL", colPrevDayHL, idxDaySession)
+            if showPrevDayClose and not na(pdClose)
+                f_liq_add(f_round_price(pdClose), "PDC", colPrevDayClose, idxDaySession)
+
+            if showWeeklyOpen and not na(wOpen)
+                f_liq_add(f_round_price(wOpen), "WO", colWeeklyOpen, idxWeekSession)
+            if showPrevWeekHL and not na(pwHigh)
+                f_liq_add(f_round_price(pwHigh), "PWH", colPrevWeekHL, idxWeekSession)
+            if showPrevWeekHL and not na(pwLow)
+                f_liq_add(f_round_price(pwLow), "PWL", colPrevWeekHL, idxWeekSession)
+            if showPrevWeekClose and not na(pwClose)
+                f_liq_add(f_round_price(pwClose), "PWC", colPrevWeekClose, idxWeekSession)
+
+            if showMonthlyOpen and not na(mOpen)
+                f_liq_add(f_round_price(mOpen), "MO", colMonthlyOpen, idxMonthSession)
+            if showPrevMonthHL and not na(pmHigh)
+                f_liq_add(f_round_price(pmHigh), "PMH", colPrevMonthHL, idxMonthSession)
+            if showPrevMonthHL and not na(pmLow)
+                f_liq_add(f_round_price(pmLow), "PML", colPrevMonthHL, idxMonthSession)
+            if showPrevMonthClose and not na(pmClose)
+                f_liq_add(f_round_price(pmClose), "PMC", colPrevMonthClose, idxMonthSession)
+
+            if showMidnightOpen and isIntraday and not na(midnightOpen)
+                f_liq_add(f_round_price(midnightOpen), "00:00", colMidnightOpen, bar_index - 1)
+            if showCustomOpen and isIntraday and not na(customOpen)
+                string ttxt = str.tostring(customHour) + ":" + str.tostring(customMinute)
+                f_liq_add(f_round_price(customOpen), ttxt, colCustomOpen, idxCustomStart)
+
+            if enableRTH and (showRTHHL or showRTHEQ or showRTHOpen)
+                int sx = nz(rthStartX, bar_index)
+                if showRTHOpen and not na(rthOpen)
+                    f_liq_add(f_round_price(rthOpen), "RTHO", colRTH, sx)
+                if showRTHHL and not na(rthHigh)
+                    f_liq_add(f_round_price(rthHigh), "RTHH", colRTH, sx)
+                if showRTHHL and not na(rthLow)
+                    f_liq_add(f_round_price(rthLow), "RTHL", colRTH, sx)
+                if showRTHEQ and not na(rthEq)
+                    f_liq_add(f_round_price(rthEq), "RTHEQ", colRTH, sx)
+
+            f_liq_sort()
+
+            int x2liq = f_clamp_x(bar_index + f_imin(liqExtendBars, MAX_FUTURE_BARS))
+            int baseX = bar_index + liqLabelXOffsetBars
+            float lastLblY = na
+            int colIdx = 0
+            lsLiq = f_line_style(liqLineStyle)
+
+            int nL = array.size(lPrice)
+            if nL > 0
+                for iL = 0 to nL - 1
+                    if usedLiqLines >= effMaxLines
+                        break
+                    float p = array.get(lPrice, iL)
+                    int k = array.get(lKey, iL)
+                    string tags = array.get(lTags, iL)
+                    color baseCol = array.get(lCol, iL)
+                    int startX = array.get(lStart, iL)
+
+                    int nCl = enableClusters ? f_cluster_count_for_tick(k, bucketTicksC) : 0
+                    bool isIns = enableClusters and nCl >= clusterInsaneMin
+                    bool isSup = enableClusters and nCl >= clusterSuperMin
+
+                    if liqLabelSepTicks > 0 and not na(lastLblY) and math.abs(p - lastLblY) <= liqLabelSepTicks * syminfo.mintick
+                        colIdx += 1
+                    else
+                        colIdx := 0
+                    int lx = baseX + colIdx * liqLabelColStepBars
+
+                    color drawCol = isIns ? colCluster : baseCol
+                    int w = isSup ? f_imax(clusterLineWidth, liqLineWidth + 2) : isIns ? f_imax(clusterLineWidth, liqLineWidth) : liqLineWidth
+
+                    f_line_seg(liqLines, usedLiqLines, startX, x2liq, p, color.new(drawCol, liqLineTransp), w, lsLiq)
+                    usedLiqLines += 1
+
+                    if showLiqLabels and usedLiqLbls < effMaxLabels
+                        string txt = f_liq_label_text(tags, p, nCl)
+                        f_label_at(liqLbls, usedLiqLbls, lx, p, txt, color.new(color.black, liqLabelBgTr), color.new(drawCol, liqLabelTxtTr), liqLabelSize, label.style_label_left)
+                        usedLiqLbls += 1
+
+                    if clusterShowTags and isIns and usedClLines < 10 and usedClLabels < 10
+                        string cTxt = (isSup ? "SUPER" : "INSANE") + " ×" + str.tostring(nCl)
+                        f_line_seg(clLines, usedClLines, bar_index, bar_index + 4, p, colCluster, clusterLineWidth, line.style_solid)
+                        usedClLines += 1
+                        f_label_at(clLabels, usedClLabels, bar_index + 2, p, cTxt, color.new(color.black, 70), colCluster, "small", label.style_label_left)
+                        usedClLabels += 1
+
+                    lastLblY := p
+
+        f_trim_lines(liqLines, showLiqLevels ? usedLiqLines : 0)
+        f_trim_labels(liqLbls, (showLiqLevels and showLiqLabels) ? usedLiqLbls : 0)
+        f_trim_lines(clLines, (showLiqLevels and enableClusters and clusterShowTags) ? usedClLines : 0)
+        f_trim_labels(clLabels, (showLiqLevels and enableClusters and clusterShowTags) ? usedClLabels : 0)
+
+        // ───── NDOG / NWOG draw
+        if showNDOG or showNWOG
+            int x2g = f_clamp_x(bar_index + f_imin(ogExtendBars, MAX_FUTURE_BARS))
+
+            int nN = array.size(ndogX)
+            if showNDOG and nN > 0
+                for i = 0 to nN - 1
+                    if usedNdogBoxes >= effMaxBoxes
+                        break
+                    int x1 = array.get(ndogX, i)
+                    float lo = array.get(ndogLo, i)
+                    float hi = array.get(ndogHi, i)
+                    f_box_at(ndogBoxes, usedNdogBoxes, x1, hi, x2g, lo, ndogFill, ndogBorder)
+                    usedNdogBoxes += 1
+                    if ogShowLabels and usedNdogLabels < effMaxLabels
+                        float mid = f_mid(lo, hi)
+                        string t = "NDOG " + f_to_str(lo, labelDecimals) + "–" + f_to_str(hi, labelDecimals)
+                        f_label_at(ndogLabels, usedNdogLabels, x1 + ogLabelXOff, mid, t, color.new(color.black, 60), color.new(color.lime, 0), ogLabelSize, label.style_label_left)
+                        usedNdogLabels += 1
+
+            int nW2 = array.size(nwogX)
+            if showNWOG and nW2 > 0
+                for i = 0 to nW2 - 1
+                    if usedNwogBoxes >= effMaxBoxes
+                        break
+                    int x1 = array.get(nwogX, i)
+                    float lo = array.get(nwogLo, i)
+                    float hi = array.get(nwogHi, i)
+                    f_box_at(nwogBoxes, usedNwogBoxes, x1, hi, x2g, lo, nwogFill, nwogBorder)
+                    usedNwogBoxes += 1
+                    if ogShowLabels and usedNwogLabels < effMaxLabels
+                        float mid = f_mid(lo, hi)
+                        string t = "NWOG " + f_to_str(lo, labelDecimals) + "–" + f_to_str(hi, labelDecimals)
+                        f_label_at(nwogLabels, usedNwogLabels, x1 + ogLabelXOff, mid, t, color.new(color.black, 60), color.new(color.orange, 0), ogLabelSize, label.style_label_left)
+                        usedNwogLabels += 1
+
+        f_trim_boxes(ndogBoxes, showNDOG ? usedNdogBoxes : 0)
+        f_trim_labels(ndogLabels, (showNDOG and ogShowLabels) ? usedNdogLabels : 0)
+        f_trim_boxes(nwogBoxes, showNWOG ? usedNwogBoxes : 0)
+        f_trim_labels(nwogLabels, (showNWOG and ogShowLabels) ? usedNwogLabels : 0)
+
+        // ───── OTE compute + draw (fix: no "_" placeholder; use explicit temp vars)
+        float oteS5 = na, oteE5 = na
+        int oteD5 = 0
+        float oteS15 = na, oteE15 = na
+        int oteD15 = 0
+        float oteS30 = na, oteE30 = na
+        int oteD30 = 0
+        float oteS60 = na, oteE60 = na
+        int oteD60 = 0
+        float oteSD = na, oteED = na
+        int oteDD = 0
+
+        if enableOTE and oteTf5
+            [oteS5, oteE5, oteD5] := f_htf_leg(oteTF0, otePivotLeft, otePivotRight, oteUseMajorFilter, oteMinPct, oteAtrMult)
+        if enableOTE and oteTf15
+            [oteS15, oteE15, oteD15] := f_htf_leg(oteTF1, otePivotLeft, otePivotRight, oteUseMajorFilter, oteMinPct, oteAtrMult)
+        if enableOTE and oteTf30
+            [oteS30, oteE30, oteD30] := f_htf_leg(oteTF2, otePivotLeft, otePivotRight, oteUseMajorFilter, oteMinPct, oteAtrMult)
+        if enableOTE and oteTf60
+            [oteS60, oteE60, oteD60] := f_htf_leg(oteTF3, otePivotLeft, otePivotRight, oteUseMajorFilter, oteMinPct, oteAtrMult)
+        if enableOTE and oteTfD
+            [oteSD, oteED, oteDD] := f_htf_leg(oteTF4, otePivotLeft, otePivotRight, oteUseMajorFilter, oteMinPct, oteAtrMult)
+
+        float ote5Lo = na, ote5Hi = na
+        float ote15Lo = na, ote15Hi = na
+        float ote30Lo = na, ote30Hi = na
+        float ote60Lo = na, ote60Hi = na
+        float oteDLo = na, oteDHi = na
+
+        if enableOTE and oteTf5
+            [ote5Lo, ote5Hi] := f_ote_bounds(oteS5, oteE5, oteRetrLo, oteRetrHi)
+        if enableOTE and oteTf15
+            [ote15Lo, ote15Hi] := f_ote_bounds(oteS15, oteE15, oteRetrLo, oteRetrHi)
+        if enableOTE and oteTf30
+            [ote30Lo, ote30Hi] := f_ote_bounds(oteS30, oteE30, oteRetrLo, oteRetrHi)
+        if enableOTE and oteTf60
+            [ote60Lo, ote60Hi] := f_ote_bounds(oteS60, oteE60, oteRetrLo, oteRetrHi)
+        if enableOTE and oteTfD
+            [oteDLo, oteDHi] := f_ote_bounds(oteSD, oteED, oteRetrLo, oteRetrHi)
+
+        if enableOTE
+            int x1o = bar_index
+            int x2o = f_clamp_x(bar_index + f_imin(oteExtendBars, MAX_FUTURE_BARS))
+
+            if oteTf5 and not na(ote5Lo) and not na(ote5Hi) and ote5Lo < ote5Hi and usedOteBoxes < effMaxBoxes
+                f_box_at(oteBoxes, usedOteBoxes, x1o, ote5Hi, x2o, ote5Lo, oteCol5, color.new(color.white, oteBorderTr))
+                usedOteBoxes += 1
+                if oteShowLabels and usedOteLabels < effMaxLabels
+                    float mid = f_mid(ote5Lo, ote5Hi)
+                    string t = "OTE " + oteTF0 + " @" + f_to_str(f_round_price(mid), labelDecimals) + "  [" + f_to_str(ote5Lo, labelDecimals) + "–" + f_to_str(ote5Hi, labelDecimals) + "]"
+                    f_label_at(oteLabels, usedOteLabels, bar_index + 3, mid, t, color.new(color.black, 65), color.new(color.white, 0), oteLabelSize, label.style_label_left)
+                    usedOteLabels += 1
+
+            if oteTf15 and not na(ote15Lo) and not na(ote15Hi) and ote15Lo < ote15Hi and usedOteBoxes < effMaxBoxes
+                f_box_at(oteBoxes, usedOteBoxes, x1o, ote15Hi, x2o, ote15Lo, oteCol15, color.new(color.white, oteBorderTr))
+                usedOteBoxes += 1
+                if oteShowLabels and usedOteLabels < effMaxLabels
+                    float mid = f_mid(ote15Lo, ote15Hi)
+                    string t = "OTE " + oteTF1 + " @" + f_to_str(f_round_price(mid), labelDecimals) + "  [" + f_to_str(ote15Lo, labelDecimals) + "–" + f_to_str(ote15Hi, labelDecimals) + "]"
+                    f_label_at(oteLabels, usedOteLabels, bar_index + 3, mid, t, color.new(color.black, 65), color.new(color.white, 0), oteLabelSize, label.style_label_left)
+                    usedOteLabels += 1
+
+            if oteTf30 and not na(ote30Lo) and not na(ote30Hi) and ote30Lo < ote30Hi and usedOteBoxes < effMaxBoxes
+                f_box_at(oteBoxes, usedOteBoxes, x1o, ote30Hi, x2o, ote30Lo, oteCol30, color.new(color.white, oteBorderTr))
+                usedOteBoxes += 1
+                if oteShowLabels and usedOteLabels < effMaxLabels
+                    float mid = f_mid(ote30Lo, ote30Hi)
+                    string t = "OTE " + oteTF2 + " @" + f_to_str(f_round_price(mid), labelDecimals) + "  [" + f_to_str(ote30Lo, labelDecimals) + "–" + f_to_str(ote30Hi, labelDecimals) + "]"
+                    f_label_at(oteLabels, usedOteLabels, bar_index + 3, mid, t, color.new(color.black, 65), color.new(color.white, 0), oteLabelSize, label.style_label_left)
+                    usedOteLabels += 1
+
+            if oteTf60 and not na(ote60Lo) and not na(ote60Hi) and ote60Lo < ote60Hi and usedOteBoxes < effMaxBoxes
+                f_box_at(oteBoxes, usedOteBoxes, x1o, ote60Hi, x2o, ote60Lo, oteCol60, color.new(color.white, oteBorderTr))
+                usedOteBoxes += 1
+                if oteShowLabels and usedOteLabels < effMaxLabels
+                    float mid = f_mid(ote60Lo, ote60Hi)
+                    string t = "OTE " + oteTF3 + " @" + f_to_str(f_round_price(mid), labelDecimals) + "  [" + f_to_str(ote60Lo, labelDecimals) + "–" + f_to_str(ote60Hi, labelDecimals) + "]"
+                    f_label_at(oteLabels, usedOteLabels, bar_index + 3, mid, t, color.new(color.black, 65), color.new(color.white, 0), oteLabelSize, label.style_label_left)
+                    usedOteLabels += 1
+
+            if oteTfD and not na(oteDLo) and not na(oteDHi) and oteDLo < oteDHi and usedOteBoxes < effMaxBoxes
+                f_box_at(oteBoxes, usedOteBoxes, x1o, oteDHi, x2o, oteDLo, oteColD, color.new(color.white, oteBorderTr))
+                usedOteBoxes += 1
+                if oteShowLabels and usedOteLabels < effMaxLabels
+                    float mid = f_mid(oteDLo, oteDHi)
+                    string t = "OTE " + oteTF4 + " @" + f_to_str(f_round_price(mid), labelDecimals) + "  [" + f_to_str(oteDLo, labelDecimals) + "–" + f_to_str(oteDHi, labelDecimals) + "]"
+                    f_label_at(oteLabels, usedOteLabels, bar_index + 3, mid, t, color.new(color.black, 65), color.new(color.white, 0), oteLabelSize, label.style_label_left)
+                    usedOteLabels += 1
+
+        f_trim_boxes(oteBoxes, enableOTE ? usedOteBoxes : 0)
+        f_trim_labels(oteLabels, (enableOTE and oteShowLabels) ? usedOteLabels : 0)
+
+        // ───── Need swings for fib/sd/htz
+        int total = array.size(swP)
+        if total < 2
+            f_label_at(htzLabels, 0, bar_index + 2, closeUse, "Waiting for confirmed swings…", color.new(color.gray, 80), color.white, "small", label.style_label_left)
+            f_trim_labels(htzLabels, 1)
+            f_trim_lines(fibLines, 0)
+            f_trim_labels(fibLabels, 0)
+            f_trim_boxes(gpBoxes, 0)
+            f_trim_labels(gpLabels, 0)
+            f_trim_lines(revFibLines, 0)
+            f_trim_lines(sdLines, 0)
+            f_trim_labels(sdLabels, 0)
+            f_trim_lines(htzLines, 0)
+            f_trim_boxes(htzBoxes, 0)
+        else
+            int x2 = f_clamp_x(bar_index + MAX_FUTURE_BARS)
+            lsRev = f_line_style(reverseStyle)
+
+            // ───── FIBS + GP
+            if enableFibs and visFibs
+                int legsDraw = f_leg_count(total, fibLegMode, fibLegCount)
+                if legsDraw > 0
+                    for i = 0 to legsDraw - 1
+                        int leg = f_leg_index(total, fibLegOffset, i)
+                        if leg < 0
+                            break
+                        float p1 = na
+                        float p2 = na
+                        int b1 = 0
+                        int b2 = 0
+                        [p1, p2, b1, b2] := f_get_leg_points(leg)
+
+                        float rng = p2 - p1
+                        if rng == 0
+                            continue
+                        int legStart = f_imin(b1, b2)
+
+                        float gpA = f_round_price(p1 + rng * 0.5)
+                        float gpB = f_round_price(p1 + rng * 0.618)
+                        float gpLo = math.min(gpA, gpB)
+                        float gpHi = math.max(gpA, gpB)
+
+                        bool drawThisGP = shadeGP and (not gpOnlyMostRecent or i == 0)
+                        if drawThisGP and usedGpBoxes < effMaxBoxes
+                            f_box_at(gpBoxes, usedGpBoxes, legStart, gpHi, x2, gpLo, color.new(color.yellow, gpTransp), color.new(color.yellow, 90))
+                            usedGpBoxes += 1
+                            if showGPLabels and usedGpLabels < effMaxLabels
+                                string gpt = "GP " + f_to_str(gpLo, labelDecimals) + "–" + f_to_str(gpHi, labelDecimals)
+                                f_label_at(gpLabels, usedGpLabels, bar_index + labelXOffset, gpHi, gpt, color.new(color.black, 55), color.new(color.yellow, 0), "small", label.style_label_left)
+                                usedGpLabels += 1
+
+                        for rI = 0 to array.size(FIB_SYS) - 1
+                            if usedFibLines >= effMaxLines
+                                break
+                            float rr = array.get(FIB_SYS, rI)
+                            float lvl = f_round_price(p1 + rng * rr)
+                            color lc = rng > 0 ? fibBullColor : fibBearColor
+
+                            f_line_seg(fibLines, usedFibLines, legStart, x2, lvl, color.new(lc, 0), fibLineWidth, line.style_solid)
+                            usedFibLines += 1
+
+                            bool scopeOK = (fibLabelScope == "All drawn legs") or (i == 0)
+                            if showFibLabels and fibLabelMode != "off" and scopeOK and usedFibLabels < effMaxLabels
+                                string ratioTxt = f_to_str(rr, 3)
+                                string t = f_fib_label(ratioTxt, lvl, fibLabelMode)
+                                color txtCol = color.new(textColor, 0)
+                                if isMicroTF and oneMinColorFibByHTZ and enableHTZ and fibHTZMatchTicks > 0
+                                    bool inZone = f_is_in_any_htz(lvl)
+                                    if inZone
+                                        int side = closeUse > lvl ? 1 : closeUse < lvl ? -1 : 0
+                                        txtCol := side == 1 ? color.new(color.lime, 0) : side == -1 ? color.new(color.red, 0) : color.new(textColor, 0)
+                                int lx = (labelPlacement == "At extension end") ? x2 : (bar_index + labelXOffset)
+                                f_label_at(fibLabels, usedFibLabels, lx, lvl, t, color.new(color.black, 70), txtCol, "tiny", label.style_label_left)
+                                usedFibLabels += 1
+
+                            if showReverseFibs and usedRevFibLines < effMaxLines
+                                float lvlR = f_round_price(p2 - rng * rr)
+                                f_line_seg(revFibLines, usedRevFibLines, legStart, x2, lvlR, color.new(color.gray, 40), 1, lsRev)
+                                usedRevFibLines += 1
+
+                        if plot0618 and usedFibLines < effMaxLines
+                            float gpTop = f_round_price(p1 + rng * 0.618)
+                            f_line_seg(fibLines, usedFibLines, legStart, x2, gpTop, color.new(color.yellow, 0), f_imax(1, fibLineWidth - 1), line.style_dotted)
+                            usedFibLines += 1
+
+            f_trim_lines(fibLines, (enableFibs and visFibs) ? usedFibLines : 0)
+            f_trim_labels(fibLabels, (enableFibs and visFibs and showFibLabels and fibLabelMode != "off") ? usedFibLabels : 0)
+            f_trim_boxes(gpBoxes, (enableFibs and visFibs and shadeGP) ? usedGpBoxes : 0)
+            f_trim_labels(gpLabels, (enableFibs and visFibs and shadeGP and showGPLabels) ? usedGpLabels : 0)
+            f_trim_lines(revFibLines, (enableFibs and visFibs and showReverseFibs) ? usedRevFibLines : 0)
+
+            // ───── STDEV
+            if enableSTDEV and visSD and drawSTDEVLines and array.size(SDM) > 0 and not na(sdUse)
+                string sdMode = (sdLegMode == "Follow fib legs") ? fibLegMode : sdLegMode
+                int legsSD = f_leg_count(total, sdMode, sdLegCount)
+                if legsSD > 0
+                    for i = 0 to legsSD - 1
+                        int leg = f_leg_index(total, sdLegOffset, i)
+                        if leg < 0
+                            break
+                        float p1s = na
+                        float p2s = na
+                        int b1s = 0
+                        int b2s = 0
+                        [p1s, p2s, b1s, b2s] := f_get_leg_points(leg)
+
+                        float rngS = p2s - p1s
+                        if rngS == 0
+                            continue
+                        int legStart = f_imin(b1s, b2s)
+                        float base = f_round_price(p1s + rngS * stdevAnchorFib)
+
+                        for m = 0 to array.size(SDM) - 1
+                            if usedSdLines + 2 > effMaxLines
+                                break
+                            float mult = array.get(SDM, m)
+                            float up = f_round_price(base + sdUse * mult)
+                            float dn = f_round_price(base - sdUse * mult)
+
+                            f_line_seg(sdLines, usedSdLines, legStart, x2, up, color.new(stdevColor, 0), 1, line.style_dashed)
+                            usedSdLines += 1
+                            f_line_seg(sdLines, usedSdLines, legStart, x2, dn, color.new(stdevColor, 0), 1, line.style_dashed)
+                            usedSdLines += 1
+
+                            bool allowLbl = labelSTDEVLines and (not isMicroTF or stdevLabelsOnMicro)
+                            if allowLbl and usedSdLabels + 2 <= effMaxLabels
+                                string tU = "SD +" + f_to_str(mult, 2) + "  " + f_to_str(up, labelDecimals)
+                                string tD = "SD -" + f_to_str(mult, 2) + "  " + f_to_str(dn, labelDecimals)
+                                f_label_at(sdLabels, usedSdLabels, bar_index + 2, up, tU, color.new(color.black, 65), color.new(stdevColor, 0), sdLabelSize, label.style_label_left)
+                                usedSdLabels += 1
+                                f_label_at(sdLabels, usedSdLabels, bar_index + 2, dn, tD, color.new(color.black, 65), color.new(stdevColor, 0), sdLabelSize, label.style_label_left)
+                                usedSdLabels += 1
+
+            f_trim_lines(sdLines, (enableSTDEV and visSD and drawSTDEVLines) ? usedSdLines : 0)
+            f_trim_labels(sdLabels, (enableSTDEV and visSD and labelSTDEVLines) ? usedSdLabels : 0)
+
+            // ───── HTZ build + draw
+            if calcHTZ
+                f_htz_clear_buckets()
+
+                int tol = htzToleranceTicks
+                int bucketTicks = f_imax(1, tol * 2 + 1)
+                int minNearEff = minNearCount
+                int exactEff = exactStackTicks
+                int minExactEff = minExactCount
+                if isMicroTF and htzSmartMicro
+                    minNearEff := f_imax(2, minNearEff - 1)
+
+                string hMode = (htzLegMode == "Follow fib legs") ? fibLegMode : htzLegMode
+                int legsHTZ = f_leg_count(total, hMode, htzLegCount)
+                if legsHTZ > 0
+                    for i = 0 to legsHTZ - 1
+                        int leg = f_leg_index(total, htzLegOffset, i)
+                        if leg < 0
+                            break
+                        float p1h = array.get(swP, leg)
+                        float p2h = array.get(swP, leg + 1)
+                        float rngH = p2h - p1h
+                        if rngH == 0
+                            continue
+
+                        for rI = 0 to array.size(FIB_SYS) - 1
+                            float rr = array.get(FIB_SYS, rI)
+                            f_htz_add_price(f_round_price(p1h + rngH * rr), wFib, bucketTicks, maxBucketsCap)
+                            if useReverseForHTZ
+                                f_htz_add_price(f_round_price(p2h - rngH * rr), wRev, bucketTicks, maxBucketsCap)
+
+                        float gp1 = f_round_price(p1h + rngH * 0.5)
+                        float gp2 = f_round_price(p1h + rngH * 0.618)
+                        f_htz_add_price(gp1, wGP, bucketTicks, maxBucketsCap)
+                        f_htz_add_price(gp2, wGP, bucketTicks, maxBucketsCap)
+
+                        if enableSTDEV and array.size(SDM) > 0 and not na(sdUse)
+                            float base = f_round_price(p1h + rngH * stdevAnchorFib)
+                            for m = 0 to array.size(SDM) - 1
+                                float mult = array.get(SDM, m)
+                                f_htz_add_price(f_round_price(base + sdUse * mult), wSD, bucketTicks, maxBucketsCap)
+                                f_htz_add_price(f_round_price(base - sdUse * mult), wSD, bucketTicks, maxBucketsCap)
+
+                        if includeSwingsInHTZ
+                            f_htz_add_price(f_round_price(p1h), wSwing, bucketTicks, maxBucketsCap)
+                            f_htz_add_price(f_round_price(p2h), wSwing, bucketTicks, maxBucketsCap)
+
+                if includeLiqInHTZ and showLiqLevels
+                    int nL2 = array.size(lPrice)
+                    if nL2 > 0
+                        for iL2 = 0 to nL2 - 1
+                            float pL = array.get(lPrice, iL2)
+                            int kL = array.get(lKey, iL2)
+                            int addW = wLiqBase
+                            if liqClusterBoost and enableClusters
+                                int nCl2 = f_cluster_count_for_tick(kL, bucketTicksC)
+                                if nCl2 >= clusterInsaneMin
+                                    addW += 1
+                                if nCl2 >= clusterSuperMin
+                                    addW += 1
+                            f_htz_add_price(f_round_price(pL), addW, bucketTicks, maxBucketsCap)
+
+                if includeRTHInHTZ and enableRTH
+                    if showRTHOpen and not na(rthOpen)
+                        f_htz_add_price(f_round_price(rthOpen), wLiqBase, bucketTicks, maxBucketsCap)
+                    if showRTHHL and not na(rthHigh)
+                        f_htz_add_price(f_round_price(rthHigh), wLiqBase, bucketTicks, maxBucketsCap)
+                    if showRTHHL and not na(rthLow)
+                        f_htz_add_price(f_round_price(rthLow), wLiqBase, bucketTicks, maxBucketsCap)
+                    if showRTHEQ and not na(rthEq)
+                        f_htz_add_price(f_round_price(rthEq), wLiqBase, bucketTicks, maxBucketsCap)
+
+                if includeOTEInHTZ and enableOTE
+                    if oteTf5 and not na(ote5Lo) and not na(ote5Hi)
+                        f_htz_add_price(f_round_price(ote5Lo), wOTE, bucketTicks, maxBucketsCap)
+                        f_htz_add_price(f_round_price(ote5Hi), wOTE, bucketTicks, maxBucketsCap)
+                    if oteTf15 and not na(ote15Lo) and not na(ote15Hi)
+                        f_htz_add_price(f_round_price(ote15Lo), wOTE, bucketTicks, maxBucketsCap)
+                        f_htz_add_price(f_round_price(ote15Hi), wOTE, bucketTicks, maxBucketsCap)
+                    if oteTf30 and not na(ote30Lo) and not na(ote30Hi)
+                        f_htz_add_price(f_round_price(ote30Lo), wOTE, bucketTicks, maxBucketsCap)
+                        f_htz_add_price(f_round_price(ote30Hi), wOTE, bucketTicks, maxBucketsCap)
+                    if oteTf60 and not na(ote60Lo) and not na(ote60Hi)
+                        f_htz_add_price(f_round_price(ote60Lo), wOTE, bucketTicks, maxBucketsCap)
+                        f_htz_add_price(f_round_price(ote60Hi), wOTE, bucketTicks, maxBucketsCap)
+                    if oteTfD and not na(oteDLo) and not na(oteDHi)
+                        f_htz_add_price(f_round_price(oteDLo), wOTE, bucketTicks, maxBucketsCap)
+                        f_htz_add_price(f_round_price(oteDHi), wOTE, bucketTicks, maxBucketsCap)
+
+                if includeOGInHTZ and (showNDOG or showNWOG)
+                    if showNDOG
+                        int nG = array.size(ndogLo)
+                        if nG > 0
+                            for gi = 0 to nG - 1
+                                f_htz_add_price(f_round_price(array.get(ndogLo, gi)), wOG, bucketTicks, maxBucketsCap)
+                                f_htz_add_price(f_round_price(array.get(ndogHi, gi)), wOG, bucketTicks, maxBucketsCap)
+                    if showNWOG
+                        int nG2 = array.size(nwogLo)
+                        if nG2 > 0
+                            for gi = 0 to nG2 - 1
+                                f_htz_add_price(f_round_price(array.get(nwogLo, gi)), wOG, bucketTicks, maxBucketsCap)
+                                f_htz_add_price(f_round_price(array.get(nwogHi, gi)), wOG, bucketTicks, maxBucketsCap)
+
+                if includeRoundNums and wRound > 0
+                    int stepT = f_imax(1, roundNumStepTicks)
+                    int kNow = f_tick(closeUse)
+                    int baseK = int(math.round(float(kNow) / float(stepT))) * stepT
+                    for off = -5 to 5
+                        int kk = baseK + off * stepT
+                        float px = float(kk) * syminfo.mintick
+                        f_htz_add_price(f_round_price(px), wRound, bucketTicks, maxBucketsCap)
+
+                f_htz_build_zones(minNearEff, exactEff, minExactEff, f_imin(maxHTZ, 200), htzTightnessWeight, htzMinConfidence, htzMaxWidthTicks)
+                if htzAutoExpand and array.size(gZLo) < htzMinZonesTarget
+                    f_htz_build_zones(f_imax(2, minNearEff - 1), exactEff, minExactEff, f_imin(maxHTZ, 200), htzTightnessWeight, f_imax(0, htzMinConfidence - 5), htzMaxWidthTicks)
+
+                if drawHTZ
+                    int x1z = bar_index
+                    int x2z = f_clamp_x(bar_index + f_imin(extendHTZBars, MAX_FUTURE_BARS))
+                    int nZ2 = array.size(gZLo)
+                    if nZ2 > 0
+                        for zi = 0 to nZ2 - 1
+                            bool isUltraZ = array.get(gZUltra, zi)
+                            bool isInsZ = array.get(gZInsane, zi)
+                            bool showMe = (not showUltraOnly) or isUltraZ or isInsZ
+                            if not showMe
+                                continue
+
+                            float lo = array.get(gZLo, zi)
+                            float hi = array.get(gZHi, zi)
+                            float mid = array.get(gZMid, zi)
+                            int conf = array.get(gZConf, zi)
+                            int cnt = array.get(gZCnt, zi)
+                            bool stack = array.get(gZStack, zi)
+
+                            int side = closeUse > hi ? 1 : closeUse < lo ? -1 : 0
+                            color base = side == 1 ? color.new(color.lime, 0) : side == -1 ? color.new(color.red, 0) : color.new(color.silver, 0)
+                            color fill = isInsZ ? color.new(color.fuchsia, 86) : isUltraZ ? color.new(color.orange, 86) : stack ? color.new(color.red, 88) : color.new(base, 88)
+                            int lw = isInsZ ? f_imin(6, ultraLineWidth + 1) : isUltraZ ? ultraLineWidth : stack ? 3 : 2
+
+                            if drawHTZBoxes and usedHtzBoxes < effMaxBoxes
+                                f_box_at(htzBoxes, usedHtzBoxes, x1z, hi, x2z, lo, fill, color.new(base, 40))
+                                usedHtzBoxes += 1
+
+                            if drawHTZMidLine and usedHtzLines < effMaxLines
+                                f_line_seg(htzLines, usedHtzLines, x1z, x2z, mid, color.new(base, 0), lw, line.style_solid)
+                                usedHtzLines += 1
+
+                            if showHTZLabels and usedHtzLabels < effMaxLabels
+                                int widthT = int(math.round((hi - lo) / syminfo.mintick))
+                                string tier = isInsZ ? "INSANE" : isUltraZ ? "ULTRA" : stack ? "STACK" : "HTZ"
+                                string t = tier + " @" + f_to_str(f_round_price(mid), labelDecimals) + "  ×" + str.tostring(cnt)
+                                if showHTZConfidence
+                                    t += "  " + str.tostring(conf) + "%"
+                                if showHTZRange
+                                    t += "  [" + f_to_str(f_round_price(lo), labelDecimals) + "–" + f_to_str(f_round_price(hi), labelDecimals) + "] (" + str.tostring(widthT) + "t)"
+                                f_label_at(htzLabels, usedHtzLabels, bar_index + htzLabelOffsetBars, mid, t, color.new(color.black, 55), color.new(base, 0), htzLabelSize, label.style_label_left)
+                                usedHtzLabels += 1
+
+                f_trim_lines(htzLines, (drawHTZ and drawHTZMidLine) ? usedHtzLines : 0)
+                f_trim_boxes(htzBoxes, (drawHTZ and drawHTZBoxes) ? usedHtzBoxes : 0)
+                f_trim_labels(htzLabels, (drawHTZ and showHTZLabels) ? usedHtzLabels : 0)
+
+//─────────────────────────────────────────────────────────────────────────────
+// Debug label
+//─────────────────────────────────────────────────────────────────────────────
+var label dbgLbl = na
+if barstate.islast
+    if debugMode
+        string st = "MSS v11.8\n"
+        st += "TF: " + timeframe.period + (isMicroTF ? " (micro)\n" : "\n")
+        st += "Rebuild: " + lastReason + "\n"
+        st += "Swings: " + str.tostring(array.size(swP)) + "\n"
+        st += "HTZ zones: " + str.tostring(array.size(gZLo)) + "\n"
+        st += "HTZ buckets: " + str.tostring(array.size(tBId)) + "\n"
+        st += "OTE: " + (enableOTE ? "ON" : "OFF") + "\n"
+        st += "OG: " + (showNDOG ? "NDOG " : "") + (showNWOG ? "NWOG " : "") + "\n"
+        st += "RTH: " + (enableRTH ? "ON" : "OFF")
+        if na(dbgLbl)
+            dbgLbl := label.new(bar_index, high, st, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.new(color.black, 70), textcolor=color.white, size=size.small)
+        label.set_x(dbgLbl, bar_index + 2)
+        label.set_y(dbgLbl, high)
+        label.set_text(dbgLbl, st)
+    else
+        if not na(dbgLbl)
+            label.delete(dbgLbl)
+            dbgLbl := na
