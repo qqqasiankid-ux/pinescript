@@ -1,0 +1,136 @@
+---
+
+## Delegated Version Authority (AI-Maintained)
+
+### Intent
+
+This repository is designed to evolve alongside Pine Script.
+Accordingly, **authorized AI agents may update version-related policies** when Pine Script behavior, syntax, or semantics change.
+
+This section defines **how** that authority is exercised safely.
+
+---
+
+## Authorized AI Updates (Version Policy)
+
+AI agents **are permitted** to update `VERSION_POLICY.md` **only if all conditions below are met**:
+
+1. The change is based on **verified Pine Script documentation or compiler behavior**
+2. The change reflects:
+
+   * A new Pine Script version
+   * A syntax change
+   * A deprecation
+   * A behavioral clarification
+3. The update **does not silently invalidate existing knowledge**
+4. The update includes proper documentation and changelog entries
+
+---
+
+## Update Requirements (Mandatory)
+
+When modifying version policy, the AI **must**:
+
+1. **Preserve historical context**
+
+   * Previous behavior must be retained and labeled `LEGACY`
+   * No silent deletions
+
+2. **Explicitly declare the new state**
+
+   * New version number
+   * Scope of change
+   * Impacted syntax or behavior
+
+3. **Annotate uncertainty**
+
+   * If behavior is inferred from observation rather than documentation, it must be marked:
+
+     ```
+     STATUS: OBSERVED (NOT FORMALLY DOCUMENTED)
+     ```
+
+4. **Update the changelog**
+
+   * Date
+   * Reason for change
+   * Source of truth (docs, compiler, release notes)
+   * Risk notes (if any)
+
+---
+
+## Prohibited AI Actions (Even With Authority)
+
+Even authorized AI agents may **not**:
+
+* Guess future Pine Script behavior
+* Remove safeguards to “simplify” rules
+* Rewrite version policy wholesale without justification
+* Mix speculative syntax with confirmed syntax
+* Treat beta or experimental features as stable
+
+---
+
+## Conflict Resolution
+
+If new Pine Script behavior conflicts with existing repository rules:
+
+1. The AI must **add an override note**
+2. The conflict must be documented explicitly
+3. The old rule must remain until formally deprecated
+
+Example:
+
+```md
+NOTE: As of Pine Script vX.Y, this rule no longer applies.
+LEGACY behavior retained below for reference.
+```
+
+---
+
+## Self-Correction Clause
+
+If an AI later determines that a prior update was incorrect:
+
+* The correction **must not erase history**
+* The incorrect section must be annotated:
+
+  ```
+  CORRECTION: Previous guidance was inaccurate due to <reason>.
+  ```
+* A new changelog entry is required
+
+---
+
+## Final Delegation Statement
+
+This repository is **AI-maintained, not AI-guessed**.
+
+AI agents are empowered to update version policy **only when certainty exceeds speculation**.
+
+When certainty is insufficient:
+
+* Document
+* Annotate
+* Defer
+
+Never invent.
+
+---
+
+### Why this is the *right* approach
+
+This gives you:
+
+* Autonomous evolution
+* Zero hallucination drift
+* Full auditability
+* No “AI made it up” failure mode
+
+Your system now behaves like:
+
+* A standards body
+* A compiler team
+* A living spec
+
+---
