@@ -1,226 +1,174 @@
 # Compile Errors
+
 ## Status
 - STATUS: CANONICAL
 - CONFIDENCE: HIGH
 - LAST_UPDATED: 2026-01-18
+- SOURCE: qqqasiankid-ux/ok repository (concepts/common_errors.md)
 
 ## Scope
-This file documents common Pine Script v6 compile-time errors, their causes, and solutions. These errors prevent script execution and must be resolved before the script can run.
+
+This file documents common Pine Script v6 compile-time errors, their causes, and solutions.
+
+---
 
 ## Canonical Rules
-- All compile errors must be fixed before script execution
-- Compile errors are deterministic and reproducible
-- Error messages provide hints to the root cause
-- Version-specific syntax differences can cause compile errors
-- Proper indentation and syntax structure are mandatory
 
-## Common Compile Errors
+- Compile errors occur before script execution, during the compilation phase
+- All compile errors must be resolved before a script can run
+- Error messages provide hints about the location and nature of the problem
 
-### 1. "The if statement is too long"
+---
 
-**Cause:** Local block inside an `if` statement exceeds Pine Script's compilation limits.
+## Error: "The if statement is too long"
 
-**Example (v6):**
+### Description
+This error occurs when the indented code (local block) inside an `if` structure is too large for the compiler to process.
+
+### Example (v6)
 ```pine
 //@version=6
-indicator("Long If Block", overlay=true)
+indicator("My script")
 
-var float result = 0.0
-
-if close > open
-    // If this block becomes too large with many calculations
-    float calc1 = close * 1.1
-    float calc2 = open * 0.9
-    float calc3 = high * 1.05
-    // ... hundreds of similar lines ...
-    result := calc1 + calc2 + calc3
-```
-
-**Solution:** Break logic into separate functions or blocks.
-
-```pine
-//@version=6
-indicator("Refactored If Block", overlay=true)
-
-calculateValues() =>
-    calc1 = close * 1.1
-    calc2 = open * 0.9
-    calc3 = high * 1.05
-    calc1 + calc2 + calc3
-
-var float result = 0.0
-if close > open
-    result := calculateValues()
-```
-
-### 2. "Script requesting too many securities"
-
-**Cause:** Script exceeds the maximum limit of 40 `request.*()` calls.
-
-**Example (v6) - PROBLEMATIC:**
-```pine
-//@version=6
-indicator("Too Many Securities", overlay=true)
-
-// Requesting 50+ securities will fail
-sym1 = request.security(syminfo.tickerid, "1", close)
-sym2 = request.security(syminfo.tickerid, "5", close)
-// ... 40+ more calls ...
-```
-
-**Solution:** Optimize by using tuples and consolidating requests.
-
-```pine
-//@version=6
-indicator("Optimized Securities", overlay=true)
-
-// Use tuples to request multiple values in one call
-[close1, close5, close15] = request.security(syminfo.tickerid, "1", [close, close, close])
-
-// Use request.security_lower_tf() for intrabar data
-var array<float> intrabars = array.new<float>()
+var int e = 0
 if barstate.islast
-    intrabars := request.security_lower_tf(syminfo.tickerid, "1", close)
+    int a = 1
+    int b = 2
+    int c = 3
+    int d = 4
+    e := a + b + c + d
 
-// Only 3 actual security calls instead of 50+
-plot(close1)
-plot(close5)
-plot(close15)
+plot(e)
 ```
 
-### 3. "Script could not be translated from: null"
+### Solution
+Break large `if` blocks into smaller functions or reduce the number of statements within the block.
 
-**Cause:** Attempting to run a Pine Script version 1 script in newer versions without updating syntax.
+---
 
-**Example (v6) - BROKEN:**
+## Error: "Script requesting too many securities"
+
+### Description
+The maximum number of securities in a script is limited to **40**. Duplicate `request.security` calls with identical parameters are optimized out by the compiler.
+
+### Example (v6)
 ```pine
 //@version=6
-// Using v1 syntax will fail
-study("Old Script")  // 'study' was deprecated
+indicator("Securities count")
+a = request.security(syminfo.tickerid, '42', close)  // (1) first unique security call
+b = request.security(syminfo.tickerid, '42', close)  // same call as above, optimized out
+
+plot(a)
+plot(a + 2)
+plot(b)
+
+sym(p) =>  // no security call on this line
+    request.security(syminfo.tickerid, p, close)
+plot(sym('D'))  // (2) one indirect call to security
+plot(sym('W'))  // (3) another indirect call to security
+
+c = request.security(syminfo.tickerid, timeframe.period, open)  // result unused, optimized out
 ```
 
-**Solution:** Update to current v6 syntax.
+### Canonical Rule
+- Maximum 40 unique `request.security` calls per script
+- Identical calls are deduplicated by the compiler
+- Unused results may be optimized out
 
+---
+
+## Error: "Script could not be translated from: null"
+
+### Description
+Usually occurs in version 1 Pine scripts and indicates incorrect code. Upgrading to a newer version provides better error messages.
+
+### Example (Problematic - v1)
+```pine
+study($)
+```
+
+### Solution
+Upgrade to v6 and use proper syntax:
 ```pine
 //@version=6
-indicator("Updated Script", overlay=true)
-// Use 'indicator' instead of deprecated 'study'
-plot(close)
+indicator("title")
 ```
 
-### 4. "no viable alternative at character '$'"
+---
 
-**Cause:** Invalid character in variable names or syntax errors. Dollar sign `$` is not valid in Pine Script identifiers.
+## Error: "no viable alternative at character '$'"
 
-**Example (v6) - BROKEN:**
+### Description
+This syntax error indicates an unexpected character. The error message hints at what character is problematic.
+
+### Example (Problematic)
+```pine
+// @version=2
+study($)
+```
+
+### Solution
 ```pine
 //@version=6
-indicator("Invalid Character")
-float $price = close  // $ not allowed in variable names
+indicator("title")
 ```
 
-**Solution:** Use only valid characters (letters, numbers, underscore).
+---
 
+## Error: "Mismatched input expecting"
+
+### Description
+Similar to "no viable alternative" but the compiler knows what should be at that position. Often caused by incorrect indentation.
+
+### Example (Problematic)
 ```pine
 //@version=6
-indicator("Valid Names")
-float price = close
-float price_usd = close
+indicator("My Script")
+    plot(1)
 ```
 
-### 5. "Mismatched input expecting"
+Error: `line 3: mismatched input 'plot' expecting 'end of line without line continuation'`
 
-**Cause:** Indentation errors or incorrect block structure. Pine Script requires consistent 4-space indentation.
-
-**Example (v6) - BROKEN:**
+### Solution
+Remove the indentation - `plot` should be at the global scope:
 ```pine
 //@version=6
-indicator("Bad Indentation")
-
-if close > open
-plot(close)  // Missing indentation!
+indicator("My Script")
+plot(1)
 ```
 
-**Solution:** Use proper 4-space indentation.
+---
 
+## Error: "Script has too many local variables"
+
+### Description
+This error appears when the script is too large to compile. Each `var = expression` creates a local variable, and auxiliary variables are created during compilation.
+
+### Example (Inefficient)
 ```pine
-//@version=6
-indicator("Correct Indentation")
-
-if close > open
-    plot(close)  // Properly indented with 4 spaces
+var1 = expr1
+var2 = expr2
+var3 = var1 + var2
 ```
 
-### 6. "Script has too many local variables"
-
-**Cause:** Exceeding the limit of approximately 1000 local variables in a single scope.
-
-**Example (v6) - PROBLEMATIC:**
+### Solution
+Combine expressions to reduce variable count:
 ```pine
-//@version=6
-indicator("Too Many Variables")
-
-// Creating hundreds of individual variables
-float var1 = close * 1
-float var2 = close * 2
-float var3 = close * 3
-// ... 1000+ variables ...
+var3 = expr1 + expr2
 ```
 
-**Solution:** Combine expressions or use arrays/collections to reduce variable count.
-
-```pine
-//@version=6
-indicator("Optimized Variables")
-
-// Use arrays to store related values
-var multipliers = array.new<float>()
-if barstate.isfirst
-    for i = 1 to 100
-        array.push(multipliers, i)
-
-// Calculate on demand instead of storing
-calculateValue(multiplier) =>
-    close * multiplier
-
-result = calculateValue(array.get(multipliers, 0))
-plot(result)
-```
+---
 
 ## Pitfalls / Failure Modes
 
-### Pitfall 1: Ignoring Version Directive
-- **Problem:** Omitting `//@version=6` causes script to default to older version with different behavior
-- **Impact:** Syntax errors, unexpected behavior, deprecated functions
-- **Prevention:** Always explicitly declare version at the top of every script
+1. **Indentation errors** - Pine Script uses indentation for scoping; incorrect indentation causes "mismatched input" errors
+2. **Version mismatch** - Using syntax from one version in another causes compilation failures
+3. **Security call limits** - Exceeding 40 unique security calls is a hard limit that cannot be worked around
+4. **Large scripts** - Scripts with too many variables may need refactoring into libraries
 
-### Pitfall 2: Nested Block Complexity
-- **Problem:** Deep nesting of if/for/while blocks can hit compilation limits
-- **Impact:** "too long" errors even with moderate code
-- **Prevention:** Refactor nested logic into separate functions; keep blocks shallow
-
-### Pitfall 3: Security Call Proliferation
-- **Problem:** Using `request.security()` in loops or generating multiple calls dynamically
-- **Impact:** Hitting 40-call limit unexpectedly
-- **Prevention:** Count security calls explicitly; use tuples; cache results
-
-### Pitfall 4: Copy-Pasting from Old Scripts
-- **Problem:** Using deprecated syntax from v1-v4 scripts without updating
-- **Impact:** Compilation failures with cryptic messages
-- **Prevention:** Always update syntax to v6; use `indicator` not `study`, `input.*` functions correctly
-
-### Pitfall 5: Invisible Character Errors
-- **Problem:** Copy-pasting code introduces special Unicode characters that look like spaces
-- **Impact:** "no viable alternative" errors at seemingly valid code
-- **Prevention:** Use plain text editors; re-type suspicious lines; check character codes
-
-### Pitfall 6: Variable Explosion in Loops
-- **Problem:** Declaring new variables inside loops that execute many times
-- **Impact:** Exceeds local variable limit
-- **Prevention:** Declare variables outside loops; reuse variables; use collections
+---
 
 ## References
-- TradingView Pine Script v6 Documentation: https://www.tradingview.com/pine-script-docs/
-- Pine Script Error Messages: https://www.tradingview.com/pine-script-docs/language/Errors
-- request.security() Limits: https://www.tradingview.com/pine-script-docs/concepts/Other-timeframes-and-data
-- Pine Script Migration Guide: https://www.tradingview.com/pine-script-docs/migration-guides/
+
+- [TradingView Pine Script v6 Reference](https://www.tradingview.com/pine-script-reference/v6/)
+- [Pine Script Error Messages Documentation](https://www.tradingview.com/pine-script-docs/error-messages/)
