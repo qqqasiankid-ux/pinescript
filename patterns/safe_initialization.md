@@ -1,20 +1,48 @@
-# Safe Initialization
+# Safe Initialization Patterns
+
 ## Status
-- STATUS: STUB (to be populated by AI maintainer)
-- CONFIDENCE: N/A
-- LAST_UPDATED: N/A
+- STATUS: CANONICAL
+- CONFIDENCE: HIGH
+- LAST_UPDATED: 2026-01-18
+- SOURCE: VERSION_POLICY, qqqasiankid-ux/ok repository
 
 ## Scope
-Describe what this file covers.
+
+This file documents the critical na initialization rules in Pine Script v6 and safe patterns for variable declaration.
+
+---
 
 ## Canonical Rules
-- (To be added)
 
-## Examples (v6)
-- (To be added)
+1. In Pine Script v6, na is typeless
+2. Variables initialized with na MUST have explicit type declarations
+3. Drawing objects declared with var MUST have explicit type declarations
 
-## Pitfalls / Failure Modes
-- (To be added)
+---
+
+## FORBIDDEN Patterns
+
+```pine
+x = na
+var myLine = na
+```
+
+## REQUIRED Patterns
+
+```pine
+//@version=6
+indicator("Safe initialization")
+
+float x = na
+int i = na
+bool b = na
+var line l = na
+var label lb = na
+var box bx = na
+```
+
+---
 
 ## References
-- (To be added)
+
+- [Pine Script v6 Type System](https://www.tradingview.com/pine-script-docs/language/type-system/)
