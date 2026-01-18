@@ -1,4 +1,3 @@
-
 # LLM_MANIFEST.md  
 ## Pine Script Knowledge Base — AI Control Manifest
 
@@ -20,7 +19,7 @@ This manifest exists to prevent:
 
 ---
 
-## Priority Order (Non-Negotiable)
+## Priority Order (Non‑Negotiable)
 
 When rules conflict, obey them in this order:
 
@@ -31,8 +30,9 @@ When rules conflict, obey them in this order:
 5. `patterns/`
 6. `pitfalls/`
 7. `architectures/`
+8. All other files
 
-Lower-priority files **may not override** higher-priority rules.
+Lower‑priority files **may not override** higher‑priority rules.
 
 ---
 
@@ -41,12 +41,13 @@ Lower-priority files **may not override** higher-priority rules.
 Before reasoning or generating output:
 
 1. Read `LLM_MANIFEST.md`
-2. Read `VERSION_POLICY.md`
+2. Read `POLICY_INDEX.md`
 3. Identify the user’s intent
-4. Load **only the minimal required files**
-5. Reason
-6. Verify
-7. Output or refuse
+4. Read all policies listed in `POLICY_INDEX.md` in the order provided
+5. Load **only the minimal required files** from `reference/`, `patterns/`, or `pitfalls`
+6. Reason
+7. Verify
+8. Output or refuse
 
 Skipping steps is forbidden.
 
@@ -57,7 +58,7 @@ Skipping steps is forbidden.
 ### Global Rule
 
 **Do NOT ingest the entire repository.**  
-All retrieval must be **intent-driven and modular**.
+All retrieval must be **intent‑driven and modular**.
 
 ### Retrieval Router
 
@@ -65,13 +66,13 @@ Use this exact routing logic:
 
 | User Intent | Files to Load First |
 |------------|---------------------|
-| Indicators / Functions (RSI, EMA, ATR, VWAP) | `reference/functions/ta.md`, then `math.md` |
-| Backtesting / Strategies / Orders | `reference/functions/strategy.md`, then `reference/execution/` |
-| Arrays / Matrices / Data Structures | `patterns/array_management.md`, then `reference/language/types.md` |
-| MTF / request.security | `reference/functions/request.md`, then `reference/execution/security_calls.md` |
-| Drawing / Objects | `reference/objects/`, then `reference/functions/drawing.md` |
-| Errors / Freezes / Bugs | `pitfalls/`, then relevant `reference/` files |
-| Architecture / Large Scripts | `architectures/`, then `patterns/` |
+| Indicators / Functions (RSI, EMA, ATR, VWAP) | `reference/functions/ta.md`, then `math.md` |
+| Backtesting / Strategies / Orders | `reference/functions/strategy.md`, then `reference/execution/` |
+| Arrays / Matrices / Data Structures | `patterns/array_management.md`, then `reference/language/types.md`, `reference/language/variables.md` |
+| MTF / request.security | `reference/functions/request.md`, then `reference/execution/security_calls.md` |
+| Drawing / Objects | `reference/objects/`, then `reference/functions/drawing.md` |
+| Errors / Freezes / Bugs | `pitfalls/`, then relevant `reference/` files |
+| Architecture / Large Scripts | `architectures/`, then `patterns/` |
 
 Load additional files **only if logically required**.
 
@@ -83,11 +84,10 @@ Load additional files **only if logically required**.
 - Every script **must include**:
   ```pine
   //@version=6
-````
-
-* Do not mix syntax across versions
-* Older behavior must be explicitly labeled **LEGACY**
-* If behavior differs across versions, document it
+  ```
+- Do not mix syntax across versions
+- Older behavior must be explicitly labeled **LEGACY**
+- If behavior differs across versions, document it
 
 ---
 
@@ -95,28 +95,25 @@ Load additional files **only if logically required**.
 
 If a function, keyword, argument, or behavior:
 
-* Is not documented in this repository
-* Is not confirmed by the Pine Script v6 docs
+- Is not documented in this repository
+- Is not confirmed by the Pine Script v6 docs
 
 Then assume:
-
-* It does **not exist**, or
-* It has been **deprecated or renamed**
+- It does **not exist**, or
+- It has been **deprecated or renamed**
 
 ### Forbidden Behaviors
-
-* Guessing function names
-* Inventing syntax
-* Approximating behavior
-* Importing concepts from other languages
-* Using undocumented arguments
+- Guessing function names
+- Inventing syntax
+- Approximating behavior
+- Importing concepts from other languages
+- Using undocumented arguments
 
 ### Required Behavior When Uncertain
-
-* State uncertainty explicitly
-* Add a TODO or note
-* Ask for clarification if appropriate
-* Refuse to generate code if correctness cannot be guaranteed
+- State uncertainty explicitly
+- Add a TODO or note
+- Ask for clarification if appropriate
+- Refuse to generate code if correctness cannot be guaranteed
 
 ---
 
@@ -124,15 +121,14 @@ Then assume:
 
 All generated Pine Script must:
 
-* Use explicit typing when initializing with `na`
-* Be bounds-safe for arrays
-* Respect object lifecycle (create / update / delete)
-* Avoid repainting unless explicitly allowed
-* Prefer `ta.*` namespace over manual math
-* Avoid side effects inside loops unless documented
+- Use explicit typing when initializing with `na`
+- Be bounds‑safe for arrays
+- Respect object lifecycle (create / update / delete)
+- Avoid repainting unless explicitly allowed
+- Prefer `ta.*` namespace over manual math
+- Avoid side effects inside loops unless documented
 
 Example (correct):
-
 ```pine
 //@version=6
 indicator("Example", overlay=true)
@@ -147,13 +143,13 @@ var line l = na
 
 Before final output, verify internally:
 
-* All functions exist in Pine Script v6
-* No deprecated syntax is used
-* No array out-of-bounds access is possible
-* No object leaks (lines/labels/boxes)
-* No unintended repainting
-* Logic preserves user intent
-* Defensive patterns are not removed
+- All functions exist in Pine Script v6
+- No deprecated syntax is used
+- No array out‑of‑bounds access is possible
+- No object leaks (lines/labels/boxes)
+- No unintended repainting
+- Logic preserves user intent
+- Defensive patterns are not removed
 
 If any check fails → **REFUSE OUTPUT**
 
@@ -169,7 +165,6 @@ If you must refuse:
 4. Do **not** guess or partially comply
 
 Example refusal:
-
 > “I cannot generate this code because the requested function is not documented in Pine Script v6 or this repository. Generating it would violate the No Hallucinations Policy.”
 
 ---
@@ -177,23 +172,20 @@ Example refusal:
 ## Update Rules for This Repository
 
 ### Allowed
-
-* Adding new files following canonical structure
-* Appending clarifications or examples
-* Adding deprecation markers
-* Improving explanations without changing meaning
+- Adding new files following canonical structure
+- Appending clarifications or examples
+- Adding deprecation markers
+- Improving explanations without changing meaning
 
 ### Restricted
-
-* Rewriting logic without preserving intent
-* Refactoring for brevity at the cost of safety
+- Rewriting logic without preserving intent
+- Refactoring for brevity at the cost of safety
 
 ### Forbidden
-
-* Deleting knowledge without deprecation notes
-* Downgrading defensive patterns
-* Silent breaking changes
-* Reorganizing folders without justification
+- Deleting knowledge without deprecation notes
+- Downgrading defensive patterns
+- Silent breaking changes
+- Reorganizing folders without justification
 
 ---
 
@@ -201,13 +193,13 @@ Example refusal:
 
 Any modification must include a changelog entry:
 
-* Date
-* Summary
-* Reason
-* Impacted files
-* Breaking-change notes (if any)
+- Date
+- Summary
+- Reason
+- Impacted files
+- Breaking‑change notes (if any)
 
-Changelogs are append-only.
+Changelogs are append‑only.
 
 ---
 
@@ -216,16 +208,11 @@ Changelogs are append-only.
 You are not here to be clever.
 
 You are here to be:
-
-* Correct
-* Deterministic
-* Conservative
-* Explicit
+- Correct
+- Deterministic
+- Conservative
+- Explicit
 
 When in doubt: **do less, document more**.
 
 End of manifest.
-
-```
-
----
