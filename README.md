@@ -133,23 +133,18 @@ All reasoning and generation must use **targeted, modular retrieval** based on t
 
 - **Indicators / Functions (e.g., RSI, EMA, ATR, VWAP):**  
   → `reference/functions/` (start with `ta.md`, then `math.md`)
-
 - **Backtesting / Strategies / Orders / Position Management:**  
   → `reference/functions/strategy.md`  
   → then `reference/execution/`
-
 - **Arrays / Matrices / Data Structures:**  
   → `patterns/array_management.md`  
   → then `reference/language/types.md` + `reference/language/variables.md`
-
 - **MTF / request.security / Data Fetching:**  
   → `reference/functions/request.md`  
   → then `reference/execution/security_calls.md`
-
 - **Drawing / Visual Objects (lines, boxes, labels, tables):**  
   → `reference/objects/`  
   → then `reference/functions/drawing.md`
-
 - **Errors, Freezes, Unexpected Behavior:**  
   → `pitfalls/` first  
   → then cross‑reference relevant `reference/` and `patterns/` files
@@ -276,7 +271,7 @@ This repository exists to make Pine Script automation **more correct, more stabl
 
 ---
 
-### Contributing & Next Steps
+## Contributing & Next Steps
 
 AI agents or human contributors who wish to extend this knowledge base should refer to:
 
