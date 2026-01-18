@@ -15,8 +15,7 @@ This file documents the critical na initialization rules in Pine Script v6 and s
 ## Canonical Rules
 
 1. In Pine Script v6, na is typeless
-2. Variables initialized with na MUST have explicit type declarations
-3. Drawing objects declared with var MUST have explicit type declarations
+2. ALL variables initialized with na MUST have explicit type declarations (regardless of whether they use var, varip, or no modifier)
 
 ---
 

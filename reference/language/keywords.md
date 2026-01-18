@@ -136,7 +136,7 @@ Declares methods that can use dot notation.
 
 ## Pitfalls / Failure Modes
 
-1. var vs varip - var resets on new bars in realtime; varip persists across ticks
+1. var vs varip - var persists across bars; varip persists across ticks within the same bar
 2. Loop limits - Loops have 500ms execution time limit
 3. Short-circuit evaluation - and/or may not evaluate second operand
 
