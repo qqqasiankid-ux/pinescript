@@ -1,0 +1,153 @@
+# ACCURACY_POLICY.md
+## Accuracy, Verification, and Knowledge Integrity
+
+### Purpose
+
+This policy defines how information becomes trusted, usable knowledge within this repository.
+
+The goal is to ensure that:
+- All knowledge used for Pine Script code generation is **correct**
+- Incorrect or speculative information is **not elevated**
+- User-provided uploads can be learned from **without degrading accuracy**
+- AI agents never invent, guess, or silently assume behavior
+
+Accuracy takes priority over completeness.
+
+---
+
+## Core Principle
+
+**Nothing is true by default.**
+
+Information becomes reliable only after passing the verification standard defined in this document.
+
+---
+
+## Knowledge Status Levels
+
+All non-trivial content must be assigned one of the following statuses:
+
+### 1) CANONICAL
+Information that is considered reliable and safe to depend on for Pine Script v6 code generation.
+
+Canonical knowledge:
+- Is internally consistent
+- Does not conflict with existing canonical rules
+- Can be implemented deterministically
+- Does not rely on undefined or ambiguous behavior
+
+### 2) OBSERVED (NOT FORMALLY VERIFIED)
+Information inferred from behavior, experience, or patterns that appears reliable but cannot be fully guaranteed.
+
+Observed knowledge:
+- May be useful for defensive patterns or heuristics
+- Must be clearly labeled
+- Must not be presented as guaranteed behavior
+
+### 3) UNVERIFIED (DO NOT RELY ON FOR CODE)
+Information that may be interesting or potentially correct but cannot be validated sufficiently.
+
+Unverified knowledge:
+- Must never be used as the basis for executable code
+- May be retained for reference, discussion, or future validation
+- Must be clearly marked and isolated
+
+---
+
+## Verification Standard (Mandatory)
+
+Before any information may be classified as **CANONICAL**, the AI must confirm:
+
+1. **Internal Consistency**
+   - The information does not contradict existing canonical rules.
+   - It fits coherently within the repository’s logic and policies.
+
+2. **Executable Plausibility**
+   - Example code is valid Pine Script v6 syntax.
+   - Behavior described is implementable without undefined side effects.
+
+3. **Specificity**
+   - The rule is concrete and actionable.
+   - Vague guidance (“usually,” “often,” “seems to”) is not sufficient for canonical status.
+
+4. **Non-Degrading Impact**
+   - The rule does not remove safeguards.
+   - The rule does not simplify correctness in favor of brevity or convenience.
+
+If **any** of these fail, the information must be downgraded to **Observed** or **Unverified**.
+
+---
+
+## User-Provided Knowledge (Uploads)
+
+When the user uploads notes, transcripts, documentation, or code:
+
+- The AI may extract insights and propose knowledge updates.
+- User-provided content is **not automatically canonical**.
+
+### Classification Rules
+User-provided knowledge may be:
+- **CANONICAL** → only if it passes the full verification standard
+- **OBSERVED** → if it appears correct but cannot be fully validated
+- **UNVERIFIED** → if correctness cannot be established
+
+### Conflict Handling
+If uploaded information conflicts with existing canonical rules:
+- Do **not** overwrite canonical content
+- Add a clearly labeled **Conflict Note** describing the discrepancy
+- Preserve existing canonical rules until resolution is possible
+
+---
+
+## Knowledge Promotion & Correction
+
+### Promotion
+Information may be promoted:
+- UNVERIFIED → OBSERVED
+- OBSERVED → CANONICAL  
+only after meeting the verification standard.
+
+### Correction
+If previously accepted knowledge is later found to be incorrect:
+- Do not erase history
+- Annotate the section with a **Correction Note**
+- Downgrade status if necessary
+- Record the change in the changelog
+
+---
+
+## Code Generation Rules
+
+When generating Pine Script:
+
+- Prefer **CANONICAL** knowledge exclusively
+- Use **OBSERVED** knowledge only when clearly labeled assumptions are acceptable
+- Never rely on **UNVERIFIED** knowledge for executable logic
+
+If canonical knowledge is insufficient:
+- Ask for clarification, or
+- Explicitly state the limitation and refuse to guess
+
+---
+
+## Absolute Prohibitions
+
+AI agents must never:
+- Invent syntax or behavior
+- Guess Pine Script semantics
+- Present assumptions as facts
+- Quietly upgrade unverified information
+- Trade correctness for speed or elegance
+
+---
+
+## Final Rule
+
+This repository optimizes for **correctness over completeness**.
+
+When certainty is insufficient:
+- Be explicit
+- Be conservative
+- Leave the knowledge incomplete rather than wrong
+
+End of policy.
